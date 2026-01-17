@@ -9,7 +9,7 @@ import { ref, reactive, computed, nextTick, watch, onMounted, onBeforeUnmount } 
 import axios from 'axios'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
-import { Monitor, ChatDotRound, DocumentChecked, User, Odometer, MagicStick, Calendar } from '@element-plus/icons-vue'
+import { Monitor, ChatDotRound, DocumentChecked, User, Odometer, MagicStick, Calendar, Microphone, VolumeOff } from '@element-plus/icons-vue'
 
 // 后端基础地址
 const API_BASE = 'http://127.0.0.1:8000'
@@ -191,6 +191,105 @@ const sendMessage = async () => {
   }
 }
 
+// ============================================
+// 面试官头像与状态栏相关变量
+// ============================================
+const interviewerStatus = ref('idle') // 'idle' | 'thinking' | 'speaking'
+
+// 监听 chatSending 状态，更新面试官头像动画状态
+watch(
+  () => chatSending.value,
+  (newVal) => {
+    if (newVal) {
+      interviewerStatus.value = 'thinking'
+    }
+  }
+)
+
+watch(
+  () => chatHistory.value,
+  () => {
+    if (chatHistory.value.length > 0) {
+      const lastMsg = chatHistory.value[chatHistory.value.length - 1]
+      if (lastMsg.role === 'ai' && !chatSending.value) {
+        interviewerStatus.value = 'speaking'
+        // 3秒后恢复到 idle
+        setTimeout(() => {
+          interviewerStatus.value = 'idle'
+        }, 3000)
+      }
+    }
+  },
+  { deep: true }
+)
+
+// ============================================
+// 语音识别相关变量与方法
+// ============================================
+const isListening = ref(false)
+let recognition = null
+
+const initSpeechRecognition = () => {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+  if (!SpeechRecognition) {
+    ElMessage.warning('您的浏览器不支持语音输入功能')
+    return
+  }
+
+  recognition = new SpeechRecognition()
+  recognition.continuous = false
+  recognition.interimResults = false
+  recognition.lang = 'zh-CN' // 设置中文识别
+
+  recognition.onstart = () => {
+    isListening.value = true
+  }
+
+  recognition.onresult = (event) => {
+    let transcript = ''
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        transcript += event.results[i][0].transcript
+      }
+    }
+    if (transcript) {
+      chatInput.value += transcript
+    }
+  }
+
+  recognition.onerror = (event) => {
+    console.error('Speech recognition error:', event.error)
+    ElMessage.warning(`语音识别出错: ${event.error}`)
+  }
+
+  recognition.onend = () => {
+    isListening.value = false
+  }
+}
+
+const toggleSpeechRecognition = () => {
+  if (!recognition) {
+    initSpeechRecognition()
+  }
+
+  if (isListening.value) {
+    recognition.stop()
+  } else {
+    recognition.start()
+  }
+}
+
+// 在组件挂载时初始化语音识别
+onMounted(() => {
+  initSpeechRecognition()
+  const onResize = () => {
+    sandboxChart && sandboxChart.resize()
+    resumeRadarChart && resumeRadarChart.resize()
+  }
+  window.addEventListener('resize', onResize)
+  if (activeMenu.value === '3') nextTick(() => initSandboxChart())
+})
+
 // -----------------------------
 // 竞争力沙盘（Radar）模块
 // 说明：通过 6 个滑块实时更新 radarValues，使用 ECharts 渲染雷达图并做平滑动画。
@@ -327,14 +426,7 @@ const handleSelect = (key) => {
 // 说明：注册窗口 resize 事件以确保 ECharts 在容器变化时正确 resize，
 // 并在组件卸载时清理定时器与动画帧，避免内存泄漏。
 // -----------------------------
-onMounted(() => {
-  const onResize = () => {
-    sandboxChart && sandboxChart.resize()
-    resumeRadarChart && resumeRadarChart.resize()
-  }
-  window.addEventListener('resize', onResize)
-  if (activeMenu.value === '3') nextTick(() => initSandboxChart())
-})
+// 以下在 onMounted 中的 initSpeechRecognition 调用已移到 toggleSpeechRecognition 相关代码中
 
 onBeforeUnmount(() => {
   if (resumeProgressTimer) clearInterval(resumeProgressTimer)
@@ -577,38 +669,108 @@ onBeforeUnmount(() => {
         <div v-if="activeMenu === '2'" class="animate-fade">
           <div class="page-header">
             <h2>模拟面试官 · ChatGPT 风格对话</h2>
-            <p>用户右侧气泡，AI 左侧气泡（含头像），支持 Enter 快速发送</p>
+            <p>实时语音输入、面试官动态头像、专业聊天界面</p>
           </div>
 
           <div class="chat-shell">
-            <div class="chat-window chat-window-el">
-              <div v-for="(msg, i) in chatHistory" :key="i" class="msg-row" :class="msg.role">
-                <div class="avatar" v-if="msg.role === 'ai'">
-                  <el-avatar :size="36" class="avatar-ai">AI</el-avatar>
+            <!-- 面试官状态栏 -->
+            <div class="interviewer-header">
+              <div class="interviewer-container">
+                <div class="interviewer-avatar-wrapper" :class="`status-${interviewerStatus}`">
+                  <img
+                    :src="`https://api.dicebear.com/7.x/avataaars/svg?seed=Interviewer`"
+                    alt="interviewer"
+                    class="interviewer-avatar"
+                  />
+                  <!-- 状态指示器 -->
+                  <div class="status-indicator" v-if="interviewerStatus !== 'idle'">
+                    <span class="pulse"></span>
+                  </div>
                 </div>
-                <div class="bubble">
-                  <div class="bubble-name">{{ msg.role === 'ai' ? 'AI 面试官' : '我' }}</div>
-                  <div class="bubble-text">{{ msg.content }}</div>
-                </div>
-                <div class="avatar" v-if="msg.role === 'user'">
-                  <el-avatar :size="36" class="avatar-user">
-                    <el-icon><User /></el-icon>
-                  </el-avatar>
+                <div class="interviewer-info">
+                  <div class="interviewer-name">AI 面试官</div>
+                  <div class="interviewer-status">
+                    <span v-if="interviewerStatus === 'thinking'" class="status-text thinking">
+                      🤔 正在思考...
+                    </span>
+                    <span v-else-if="interviewerStatus === 'speaking'" class="status-text speaking">
+                      💬 正在回复...
+                    </span>
+                    <span v-else class="status-text idle">
+                      ✓ 等待您的回答
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
 
+            <!-- 聊天窗口 -->
+            <div class="chat-window chat-window-el">
+              <div v-for="(msg, i) in chatHistory" :key="i" class="msg-row" :class="msg.role">
+                <div class="avatar" v-if="msg.role === 'ai'">
+                  <img
+                    :src="`https://api.dicebear.com/7.x/avataaars/svg?seed=Interviewer`"
+                    alt="AI"
+                    class="avatar-img"
+                  />
+                </div>
+                <div class="bubble">
+                  <div class="bubble-text">{{ msg.content }}</div>
+                </div>
+                <div class="avatar" v-if="msg.role === 'user'">
+                  <div class="avatar-user-placeholder">
+                    <el-icon><User /></el-icon>
+                  </div>
+                </div>
+              </div>
+              <!-- Loading 提示 -->
+              <div v-if="chatSending" class="msg-row ai">
+                <div class="avatar">
+                  <img
+                    :src="`https://api.dicebear.com/7.x/avataaars/svg?seed=Interviewer`"
+                    alt="AI"
+                    class="avatar-img"
+                  />
+                </div>
+                <div class="bubble loading-bubble">
+                  <div class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 输入区域 -->
             <div class="input-area">
-              <el-input
-                v-model="chatInput"
-                placeholder="输入你的回答…（Enter 发送）"
-                @keyup.enter="sendMessage"
-                size="large"
-              >
-                <template #append>
-                  <el-button type="primary" :loading="chatSending" @click="sendMessage">发送</el-button>
-                </template>
-              </el-input>
+              <div class="input-wrapper">
+                <!-- 麦克风按钮 -->
+                <el-button
+                  :type="isListening ? 'danger' : 'default'"
+                  :icon="isListening ? 'VolumeOff' : 'Microphone'"
+                  circle
+                  size="large"
+                  @click="toggleSpeechRecognition"
+                  :title="isListening ? '停止录音' : '开始语音输入'"
+                  class="mic-btn"
+                >
+                </el-button>
+
+                <el-input
+                  v-model="chatInput"
+                  placeholder="输入你的回答或点击🎙️进行语音输入…（Enter 发送）"
+                  @keyup.enter="sendMessage"
+                  size="large"
+                  class="chat-input-field"
+                >
+                  <template #append>
+                    <el-button type="primary" :loading="chatSending" @click="sendMessage">
+                      发送
+                    </el-button>
+                  </template>
+                </el-input>
+              </div>
             </div>
           </div>
         </div>
@@ -838,35 +1000,281 @@ onBeforeUnmount(() => {
   box-shadow: 0 18px 50px rgba(15,23,42,0.08);
   overflow: hidden;
 }
+
+/* ============ 面试官状态栏 ============ */
+.interviewer-header {
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(64,158,255,0.10), rgba(0,255,255,0.05));
+  border-bottom: 1px solid rgba(64,158,255,0.15);
+  display: flex;
+  align-items: center;
+}
+
+.interviewer-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.interviewer-avatar-wrapper {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid rgba(64,158,255,0.30);
+  background: rgba(64,158,255,0.08);
+  transition: all 0.3s ease;
+}
+
+.interviewer-avatar-wrapper.status-thinking {
+  animation: breathe 2s ease-in-out infinite;
+  border-color: rgba(255,193,7,0.60);
+  box-shadow: 0 0 12px rgba(255,193,7,0.30);
+}
+
+.interviewer-avatar-wrapper.status-speaking {
+  animation: breathe 1.5s ease-in-out infinite;
+  border-color: rgba(76,175,80,0.60);
+  box-shadow: 0 0 16px rgba(76,175,80,0.35);
+}
+
+.interviewer-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.status-indicator {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 14px;
+  height: 14px;
+  background: #4CAF50;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-indicator .pulse {
+  width: 8px;
+  height: 8px;
+  background: #4CAF50;
+  border-radius: 50%;
+  animation: pulse-animate 1.5s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+@keyframes pulse-animate {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0.2; transform: scale(1.5); }
+}
+
+.interviewer-info {
+  flex: 1;
+}
+
+.interviewer-name {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.interviewer-status {
+  margin-top: 2px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-text {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.status-text.thinking {
+  color: #F57F17;
+  background: rgba(255,193,7,0.12);
+}
+
+.status-text.speaking {
+  color: #388E3C;
+  background: rgba(76,175,80,0.12);
+}
+
+.status-text.idle {
+  color: rgba(15,23,42,0.60);
+  background: rgba(15,23,42,0.06);
+}
+
+/* ============ 聊天窗口 ============ */
 .chat-window-el {
   flex: 1;
   overflow-y: auto;
-  padding: 18px 16px;
+  padding: 16px;
   background:
-    radial-gradient(900px 400px at 20% 0%, rgba(64,158,255,0.10), transparent 60%),
-    linear-gradient(180deg, #f7faff 0%, #f3f6fc 100%);
+    radial-gradient(900px 400px at 20% 0%, rgba(64,158,255,0.08), transparent 60%),
+    linear-gradient(180deg, #f8fbff 0%, #f4f7fb 100%);
 }
-.input-area { padding: 14px; background: rgba(255,255,255,0.92); border-top: 1px solid rgba(15,23,42,0.06); }
-.msg-row { display: flex; gap: 10px; margin: 14px 0; align-items: flex-end; }
+
+.input-area { 
+  padding: 14px 16px; 
+  background: rgba(255,255,255,0.92); 
+  border-top: 1px solid rgba(15,23,42,0.06);
+}
+
+.input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mic-btn {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.mic-btn:hover {
+  transform: scale(1.05);
+}
+
+.chat-input-field {
+  flex: 1;
+}
+
+:deep(.chat-input-field .el-input__inner) {
+  background: rgba(255,255,255,0.98);
+  border: 1px solid rgba(64,158,255,0.20);
+  border-radius: 24px;
+  padding: 10px 16px;
+}
+
+/* ============ 消息气泡优化 ============ */
+.msg-row { 
+  display: flex; 
+  gap: 10px; 
+  margin: 12px 0; 
+  align-items: flex-end;
+}
+
 .msg-row.user { justify-content: flex-end; }
-.bubble {
-  max-width: 72%;
-  padding: 12px 14px;
-  border-radius: 14px;
-  box-shadow: 0 10px 24px rgba(15,23,42,0.08);
-  border: 1px solid rgba(15,23,42,0.06);
+
+.avatar {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(64,158,255,0.12);
+  border: 1px solid rgba(64,158,255,0.20);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.msg-row.ai .bubble { background: rgba(255,255,255,0.95); border-top-left-radius: 8px; }
-.msg-row.user .bubble {
-  background: linear-gradient(135deg, rgba(64,158,255,0.98), rgba(64,158,255,0.62));
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-user-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(64,158,255,0.95), rgba(64,158,255,0.50));
   color: #fff;
-  border: 1px solid rgba(64,158,255,0.30);
-  border-top-right-radius: 8px;
 }
-.bubble-name { font-size: 12px; opacity: 0.85; margin-bottom: 6px; }
-.bubble-text { line-height: 1.65; font-size: 14px; white-space: pre-wrap; }
-.avatar-ai { background: rgba(64,158,255,0.16); color: #409EFF; border: 1px solid rgba(64,158,255,0.20); }
-.avatar-user { background: rgba(15,23,42,0.88); color: #fff; border: 1px solid rgba(15,23,42,0.15); }
+
+.bubble {
+  max-width: 70%;
+  padding: 12px 16px;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(15,23,42,0.08);
+  border: 1px solid rgba(15,23,42,0.06);
+  word-wrap: break-word;
+}
+
+.msg-row.ai .bubble { 
+  background: rgba(240,242,245,0.95);
+  border-radius: 16px 16px 16px 6px;
+  border: 1px solid rgba(15,23,42,0.08);
+  color: #0f172a;
+}
+
+.msg-row.user .bubble {
+  background: linear-gradient(135deg, rgba(64,158,255,0.92), rgba(64,158,255,0.68));
+  color: #fff;
+  border: 1px solid rgba(64,158,255,0.40);
+  border-radius: 16px 16px 6px 16px;
+}
+
+.bubble-text { 
+  line-height: 1.65; 
+  font-size: 14px; 
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ============ Loading 动画 ============ */
+.loading-bubble {
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  height: 12px;
+  align-items: center;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(15,23,42,0.40);
+  animation: typing 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 60%, 100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-8px);
+  }
+}
 
 .roadmap-container {
   display: flex;
