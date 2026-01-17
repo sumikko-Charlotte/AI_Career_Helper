@@ -86,3 +86,23 @@ npm run dev
 
 ```bash
 docker compose up -d --build
+# 智途 AI（AI Career Helper）
+
+面向大学生的全周期生涯规划平台，提供生涯路径规划、能力评估与求职辅助。
+
+---
+
+## 本地部署（Docker 一键启动｜推荐）
+
+### 环境要求
+- Windows / macOS / Linux
+- 已安装 Docker Desktop  
+  - Windows 用户需开启 WSL2
+
+---
+
+### 启动项目
+在项目根目录（包含 `docker-compose.yml`）执行：
+
+```bash
+docker compose up -d --build
