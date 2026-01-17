@@ -75,3 +75,14 @@ npm run dev
 - 接入 LLM 动态生成 Roadmap（需说明使用的 LLM 与 API key），或者
 - 把注释整理为更完整的 Developer Guide（README 的扩展），
 请告诉我优先级（例如“先接入 LLM，再生成文档”）。
+## 本地部署（Docker 一键启动）
+
+### 0. 环境要求
+- Windows / macOS / Linux
+- 已安装 Docker Desktop（Windows 需开启 WSL2）
+
+### 1. 启动步骤
+在项目根目录（有 docker-compose.yml 的位置）运行：
+
+```bash
+docker compose up -d --build
