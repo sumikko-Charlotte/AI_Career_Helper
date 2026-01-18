@@ -24,6 +24,16 @@ class ResumeRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    grade: str
+    target_role: str
+
 @app.get("/")
 def home():
     return {"message": "AI Backend Running"}
@@ -106,6 +116,33 @@ def analyze_resume(request: ResumeRequest):
     }
 
 # --- 核心功能 2: 模拟面试接口 ---
+# --- 核心功能 3：推荐接口 ---
+@app.post("/api/recommend")
+def recommend():
+    """根据用户年级和目标岗位推荐相关职位信息"""
+    import csv
+    import os
+
+    try:
+        jobs_file = "jobs.csv"
+        if not os.path.exists(jobs_file):
+            return {"success": False, "message": "职位数据文件不存在", "data": []}
+
+        jobs = []
+        with open(jobs_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for job in reader:
+                jobs.append({
+                    "职业分类": job.get("职业分类", ""),
+                    "岗位": job.get("岗位", ""),
+                    "关键词": job.get("关键词", ""),
+                    "平均薪资": job.get("平均薪资", "")
+                })
+
+        return {"success": True, "message": "获取职位数据成功", "data": jobs}
+
+    except Exception as e:
+        return {"success": False, "message": f"读取职位数据失败: {str(e)}", "data": []}
 @app.post("/api/chat")
 def chat(request: ChatRequest):
     time.sleep(1) # 模拟思考
@@ -163,6 +200,79 @@ def chat(request: ChatRequest):
             "difficulty": random.choice(["中等", "偏难", "高难"]),
             "intent": random.choice(["追问细节", "验证取舍", "考察边界", "工程化能力"]),
         },
+    }
+
+# --- 用户登录注册接口 ---
+@app.post("/api/login")
+def login(request: LoginRequest):
+    """用户登录"""
+    import csv
+    import os
+
+    # 检查用户数据文件是否存在
+    users_file = "users.csv"
+    if not os.path.exists(users_file):
+        return {"success": False, "message": "用户数据文件不存在"}
+
+    # 读取用户数据
+    with open(users_file, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for user in reader:
+            if user['username'] == request.username and user['password'] == request.password:
+                return {
+                    "success": True,
+                    "message": "登录成功",
+                    "user": {
+                        "username": user['username'],
+                        "grade": user['grade'],
+                        "target_role": user['target_role']
+                    }
+                }
+
+    return {"success": False, "message": "用户名或密码错误"}
+
+@app.post("/api/register")
+def register(request: RegisterRequest):
+    """用户注册"""
+    import csv
+    import os
+
+    # 检查用户数据文件是否存在，如果不存在创建
+    users_file = "users.csv"
+    file_exists = os.path.exists(users_file)
+
+    # 检查用户名是否已存在
+    if file_exists:
+        with open(users_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for user in reader:
+                if user['username'] == request.username:
+                    return {"success": False, "message": "用户名已存在"}
+
+    # 添加新用户
+    with open(users_file, 'a', newline='', encoding='utf-8') as f:
+        fieldnames = ['username', 'password', 'grade', 'target_role']
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+
+        # 如果文件不存在，先写入表头
+        if not file_exists:
+            writer.writeheader()
+
+        writer.writerow({
+            'username': request.username,
+            'password': request.password,
+            'grade': request.grade,
+            'target_role': request.target_role
+        })
+
+    return {
+        "success": True,
+        "message": "注册成功",
+        "user": {
+            "username": request.username,
+            "grade": request.grade,
+            "target_role": request.target_role
+        }
     }
 
 # 👇 注意：这行必须顶格写，不能有空格！
