@@ -1,4 +1,8 @@
 # backend/main.py
+# 确保顶部导入了 os
+import os 
+import csv
+import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -274,8 +278,85 @@ def register(request: RegisterRequest):
             "target_role": request.target_role
         }
     }
+# --- 👇 请复制粘贴到 main.py 的后面 (不要覆盖前面的代码) ---
+# --- 👇 新增：岗位数据库（与 jobs.csv 字段对应，没有 CSV 也能运行）---
+JOB_DATABASE = [
+    {"职业分类": "后端开发", "岗位": "Python 开发工程师", "关键词": "FastAPI, MySQL, Redis", "平均薪资": "15k-25k"},
+    {"职业分类": "前端开发", "岗位": "Vue 开发工程师", "关键词": "Vue3, Vite, Element Plus", "平均薪资": "14k-23k"},
+    {"职业分类": "算法工程师", "岗位": "NLP 算法工程师", "关键词": "LLM, RAG, 深度学习", "平均薪资": "20k-35k"},
+    {"职业分类": "数据开发", "岗位": "数据工程师", "关键词": "Spark, Hadoop, 数据仓库", "平均薪资": "16k-28k"},
+    {"职业分类": "运维开发", "岗位": "DevOps 工程师", "关键词": "Docker, Kubernetes, 自动化", "平均薪资": "18k-26k"},
+]
+class AgentRequest(BaseModel):
+    grade: str       # 用户年级
+    target_job: str  # 目标方向
 
+@app.post("/api/agent")
+def agent_recommend(req: AgentRequest):
+    """
+    智能体核心逻辑：
+    1. 根据用户年级筛选（大一 -> 找日常实习/学习路线）
+    2. 根据目标方向筛选（算法 -> 找 Python/模型相关）
+    """
+    recommendations = []
+    
+    # 1. 简单的规则筛选 (模拟 Agent 思考)
+    for job in JOB_DATABASE:
+        # 获取 CSV 里的字段 (注意：要和你昨天的表头对应)
+        j_name = str(job.get('岗位', '')).lower()
+        j_cate = str(job.get('职业分类', '')).lower()
+        
+        # 规则 A: 匹配目标方向
+        if req.target_job.lower() in j_name or req.target_job.lower() in j_cate:
+            recommendations.append(job)
+            
+    # 2. 生成“拟人化”的话术
+    if not recommendations:
+        reply = f"同学你好！作为{req.grade}学生，目前库里暂时没有完全匹配 '{req.target_job}' 的岗位。建议你可以先从基础项目练手，积累经验。"
+    else:
+        # 取前 3 个最匹配的
+        top_jobs = recommendations[:3] 
+        job_names = "、".join([j.get('岗位', '未知岗位') for j in top_jobs])
+        
+        reply = f"你好！我是你的专属职业顾问。检测到你是{req.grade}学生，且主修{req.target_job}方向。\n\n"
+        reply += f"💡 **Agent 洞察**：对于这个阶段，我为你精选了 **{len(recommendations)}** 个机会，重点推荐：**{job_names}**。\n"
+        reply += "这些岗位对新人比较友好，建议你点击下方按钮尝试投递！"
+
+    return {
+        "reply": reply,
+        "data": recommendations[:3] # 返回前3个给前端展示
+    }
 # 👇 注意：这行必须顶格写，不能有空格！
+# --- 👇 复制到 main.py 末尾 ---
+
+# 定义投递的数据模型
+class ApplyRequest(BaseModel):
+    username: str
+    job_name: str
+    salary: str
+
+@app.post("/api/apply")
+def apply_job(req: ApplyRequest):
+    """
+    模拟投递接口：将投递记录写入 applications.csv
+    """
+    file_path = "data/applications.csv"
+    
+    # 如果文件不存在，先创建并写表头
+    if not os.path.exists(file_path):
+        with open(file_path, "w", encoding="utf-8-sig", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["用户", "投递岗位", "薪资", "投递时间", "状态"])
+
+    # 写入本次投递记录
+    import datetime
+    now_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    with open(file_path, "a", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([req.username, req.job_name, req.salary, now_time, "已投递"])
+
+    return {"message": "投递成功", "status": "success"}
 if __name__ == "__main__":
     import uvicorn
     # 👇 这行前面要留 4 个空格

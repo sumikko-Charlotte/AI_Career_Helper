@@ -9,9 +9,9 @@
   import axios from 'axios'
   import * as echarts from 'echarts'
   import { ElMessage } from 'element-plus'
-  import { Monitor, ChatDotRound, DocumentChecked, User, Odometer, MagicStick, Calendar } from '@element-plus/icons-vue'
+  import { Monitor, ChatDotRound, DocumentChecked, User, Odometer, MagicStick, Calendar, SwitchButton, CircleCheck } from '@element-plus/icons-vue'
   import Login from './components/Login.vue'
-
+  import DigitalHuman from './components/DigitalHuman.vue'
   // 后端基础地址
   const API_BASE = 'http://127.0.0.1:8000'
 
@@ -101,12 +101,13 @@
     resumeRadarChart.setOption(option, { notMerge: true, lazyUpdate: true })
   }
   
+
   const initResumeRadar = () => {
     if (!resumeRadarRef.value || !resumeResult.value?.dimensions?.length) return
     if (!resumeRadarChart) resumeRadarChart = echarts.init(resumeRadarRef.value)
     renderResumeRadar()
   }
-  
+
   watch(
     () => resumeResult.value,
     async () => {
@@ -155,9 +156,13 @@
   // - `chatHistory` 保存对话记录，role: 'ai' | 'user'
   // - `sendMessage()` 负责将用户问题发送到 `/api/chat`，并将回复添加到对话中
   // - 后端返回的回复在此处以气泡样式展示
+  // - `interviewerState` 控制数字人状态：'neutral'(待机) 或 'talking'(说话)
+  // - `callAgent()` 触发 Agent 智能推荐流程
   // -----------------------------
   const chatInput = ref('')
   const chatSending = ref(false)
+  const interviewerState = ref('neutral')
+  const agentCalling = ref(false)
 const chatHistory = ref([
   {
     role: 'ai',
@@ -218,6 +223,89 @@ const fetchJobsData = async () => {
   }
   }
   
+  // 中文注释：callAgent
+  // 作用：触发 Agent 智能推荐流程
+  // 1) 设置 interviewerState 为 'talking'（数字人开始说话）
+  // 2) 调用后端 `/api/agent` 接口（参数：grade 和 target_job）
+  // 3) 将回复内容添加到 chatHistory
+  // 4) 延迟 3 秒后将 interviewerState 设回 'neutral'（数字人恢复待机）
+  // --- 修改后的 callAgent 函数 (支持显示投递按钮) ---
+// --- 1. 修改后的 callAgent (支持传递岗位数据) ---
+const callAgent = async () => {
+  if (agentCalling.value) return
+  if (!currentUser.value) {
+    ElMessage.warning('请先登录')
+    return
+  }
+
+  agentCalling.value = true
+  interviewerState.value = 'talking' 
+  
+  // 先发一条等待消息
+  chatHistory.value.push({ role: 'ai', content: 'Agent 正在分析您的画像并匹配岗位...' })
+  scrollChatToBottom()
+
+  try {
+    const res = await axios.post(`${API_BASE}/api/agent`, {
+      grade: currentUser.value.grade || '大一',
+      target_job: currentUser.value.target_role || currentUser.value.target_job || '算法'
+    })
+    
+    // 延迟 2 秒模拟说话
+    setTimeout(() => {
+       const replyText = res.data.reply || '为您找到以下推荐岗位：'
+       const jobList = res.data.data || []
+
+       // 🔥 关键修改：把 jobList 放入消息对象
+       chatHistory.value.push({ 
+         role: 'ai', 
+         content: replyText, 
+         jobs: jobList 
+       })
+       
+       interviewerState.value = 'neutral'
+       agentCalling.value = false
+       scrollChatToBottom()
+    }, 2000)
+    
+  } catch (e) {
+    console.error(e)
+    chatHistory.value.push({ role: 'ai', content: 'Agent 掉线了，请检查后端。' })
+    interviewerState.value = 'neutral'
+    agentCalling.value = false
+  }
+}
+
+// --- 2. 新增 handleApply (处理一键投递) ---
+const handleApply = async (job) => {
+  // 给当前点击的按钮加 loading 状态
+  job._loading = true
+  
+  try {
+    ElMessage.info(`正在通过 Agent 对接 ${job['岗位']} 的 HR...`)
+    
+    // 模拟 1.5 秒的网络请求延迟
+    await sleep(1500) 
+
+    // 调用后端存储投递记录
+    await axios.post(`${API_BASE}/api/apply`, {
+      username: currentUser.value ? currentUser.value.username : '游客',
+      job_name: job['岗位'],
+      salary: job['平均薪资'] || '面议'
+    })
+
+    ElMessage.success(`✅ 投递成功！简历已发送至 HR 邮箱。`)
+    
+    // 标记为已投递 (让按钮变灰)
+    job._applied = true 
+
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('投递失败，请稍后重试')
+  } finally {
+    job._loading = false
+  }
+}
   // -----------------------------
   // 竞争力沙盘（Radar）模块
   // 说明：通过 6 个滑块实时更新 radarValues，使用 ECharts 渲染雷达图并做平滑动画。
@@ -638,7 +726,12 @@ const handleLogout = () => {
               <h2>模拟面试官 · ChatGPT 风格对话</h2>
               <p>用户右侧气泡，AI 左侧气泡（含头像），支持 Enter 快速发送</p>
             </div>
-  
+
+            <!-- 数字人展示区 -->
+            <div class="digital-human-section">
+              <DigitalHuman :isTalking="interviewerState === 'talking'" />
+            </div>
+
             <div class="chat-shell">
               <div class="chat-window chat-window-el">
                 <div v-for="(msg, i) in chatHistory" :key="i" class="msg-row" :class="msg.role">
@@ -646,9 +739,34 @@ const handleLogout = () => {
                     <el-avatar :size="36" class="avatar-ai">AI</el-avatar>
                   </div>
                   <div class="bubble">
-                    <div class="bubble-name">{{ msg.role === 'ai' ? 'AI 面试官' : '我' }}</div>
-                    <div class="bubble-text">{{ msg.content }}</div>
-                  </div>
+  <div class="bubble-name">{{ msg.role === 'ai' ? 'AI 面试官' : '我' }}</div>
+  <div class="bubble-text">{{ msg.content }}</div>
+
+  <div v-if="msg.jobs && msg.jobs.length > 0" class="job-card-list">
+    <div v-for="(job, jIndex) in msg.jobs" :key="jIndex" class="job-card-item">
+  
+  <div class="job-info">
+    <div class="job-name">{{ job['岗位'] }}</div>
+    <div class="job-salary">💰 {{ job['平均薪资'] }}</div>
+    
+    <div v-if="job._applied" class="apply-success-text">
+      <el-icon><CircleCheck /></el-icon> 简历已送达 HR 邮箱
+    </div>
+  </div>
+
+  <el-button 
+    :type="job._applied ? 'success' : 'primary'" 
+    size="small" 
+    :loading="job._loading" 
+    :disabled="job._applied"
+    @click="handleApply(job)"
+  >
+    {{ job._applied ? '✅ 投递成功' : '⚡ 一键投递' }}
+  </el-button>
+  
+</div>
+  </div>
+  </div>
                   <div class="avatar" v-if="msg.role === 'user'">
                     <el-avatar :size="36" class="avatar-user">
                       <el-icon><User /></el-icon>
@@ -658,16 +776,23 @@ const handleLogout = () => {
               </div>
   
               <div class="input-area">
-                <el-input
-                  v-model="chatInput"
-                  placeholder="输入你的回答…（Enter 发送）"
-                  @keyup.enter="sendMessage"
-                  size="large"
-                >
-                  <template #append>
-                    <el-button type="primary" :loading="chatSending" @click="sendMessage">发送</el-button>
-                  </template>
-                </el-input>
+                <div class="input-row">
+                  <el-input
+                    v-model="chatInput"
+                    placeholder="输入你的回答…（Enter 发送）"
+                    @keyup.enter="sendMessage"
+                    size="large"
+                  >
+                    <template #append>
+                      <el-button type="primary" :loading="chatSending" @click="sendMessage">发送</el-button>
+                    </template>
+                  </el-input>
+                </div>
+                <div class="agent-action">
+                  <el-button type="success" :loading="agentCalling" @click="callAgent" class="agent-button">
+                    ⚡ 召唤 Agent 智能推荐
+                  </el-button>
+                </div>
               </div>
             </div>
           </div>
@@ -887,8 +1012,18 @@ const handleLogout = () => {
   .chart-title { font-size: 12px; color: rgba(15,23,42,0.55); margin-bottom: 8px; }
   .chart-container { height: 520px; }
   
+  .digital-human-section {
+    height: 200px;
+    border-radius: 16px;
+    background: rgba(0,0,0,0.85);
+    border: 1px solid rgba(15,23,42,0.10);
+    margin-bottom: 12px;
+    box-shadow: 0 18px 50px rgba(15,23,42,0.08);
+    overflow: hidden;
+  }
+  
   .chat-shell {
-    height: calc(100vh - 190px);
+    height: calc(100vh - 420px);
     display: flex;
     flex-direction: column;
     background: rgba(255,255,255,0.92);
@@ -905,7 +1040,31 @@ const handleLogout = () => {
       radial-gradient(900px 400px at 20% 0%, rgba(64,158,255,0.10), transparent 60%),
       linear-gradient(180deg, #f7faff 0%, #f3f6fc 100%);
   }
-  .input-area { padding: 14px; background: rgba(255,255,255,0.92); border-top: 1px solid rgba(15,23,42,0.06); }
+  .input-area { 
+    padding: 14px; 
+    background: rgba(255,255,255,0.92); 
+    border-top: 1px solid rgba(15,23,42,0.06); 
+  }
+  .input-row {
+    margin-bottom: 10px;
+  }
+  .agent-action {
+    display: flex;
+    justify-content: center;
+  }
+  .agent-button {
+    width: 100%;
+    max-width: 400px;
+    height: 40px;
+    font-weight: 600;
+    font-size: 14px;
+    background: linear-gradient(135deg, #67C23A, #85CE61);
+    border: 1px solid #85CE61;
+  }
+  .agent-button:hover {
+    background: linear-gradient(135deg, #85CE61, #67C23A);
+    filter: brightness(1.1);
+  }
   .msg-row { display: flex; gap: 10px; margin: 14px 0; align-items: flex-end; }
   .msg-row.user { justify-content: flex-end; }
   .bubble {
@@ -1038,3 +1197,53 @@ const handleLogout = () => {
   
   .animate-fade { animation: fadeIn 0.5s ease; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }</style>
+  /* --- 岗位投递卡片样式 --- */
+.job-card-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.job-card-item {
+  background: #f0f9eb; /* 浅绿色背景 */
+  border: 1px solid #e1f3d8;
+  padding: 12px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between; /* 左右对齐 */
+  align-items: center;
+}
+
+.job-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.job-name {
+  font-weight: bold;
+  color: #333;
+  font-size: 14px;
+}
+
+.job-salary {
+  font-size: 12px;
+  color: #f56c6c; /* 红色高亮薪资 */
+  font-weight: bold;
+}
+/* --- 新增：投递成功提示字样式 --- */
+.apply-success-text {
+  font-size: 12px;
+  color: #67C23A; /* Element Plus 的成功绿色 */
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  animation: fadeIn 0.5s ease;
+}
+
+/* 让图标稍微对齐一下 */
+.apply-success-text .el-icon {
+  font-size: 14px;
+}

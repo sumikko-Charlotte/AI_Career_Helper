@@ -2,7 +2,9 @@
 import { ref, computed } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
-  const $router = useRouter()
+
+// 修复：正确定义router变量（去掉$，或使用$router）
+const router = useRouter() 
 // 定义props和emits
 const emit = defineEmits(['login-success'])
 
@@ -22,6 +24,7 @@ const registerForm = ref({
   grade: '',
   target_role: ''
 })
+
 const currentUsername = computed({
   get() {
     return isLogin.value ? loginForm.value.username : registerForm.value.username
@@ -63,11 +66,11 @@ const toggleMode = () => {
   }
 }
 
-// 提交登录
+// 提交登录（修复核心问题 + 增加调试日志）
 const handleLogin = async () => {
   // 打印日志，验证是否获取到输入内容
-  console.log('输入的用户名：', loginForm.value.username)
-  console.log('输入的密码：', loginForm.value.password)
+  console.log('📝 输入的用户名：', loginForm.value.username)
+  console.log('📝 输入的密码：', loginForm.value.password)
 
   // 简单判断（避免空值）
   if (!loginForm.value.username.trim() || !loginForm.value.password.trim()) {
@@ -76,25 +79,32 @@ const handleLogin = async () => {
   }
 
   loading.value = true
-  try {
-    // 关键：传参时用 loginForm.value（如果是 ref 包裹的）
+   try {
+    console.log('🚀 开始发送登录请求')
     const response = await axios.post(
       'http://127.0.0.1:8000/api/login',
-      loginForm.value // 直接传整个表单对象
+      loginForm.value
     )
 
+    console.log('✅ 登录请求响应：', response.data)
     if (response.data.success) {
       alert('登录成功！')
+      // 方案1：只保留emit，让父组件统一处理跳转（推荐）
       emit('login-success', response.data.user)
-      router.push('/') // 跳转到首页
+      // 注释掉直接的路由跳转，避免双重跳转
+      // router.push('/') 
+
+      // 方案2：如果父组件没有监听login-success，就保留router.push，删掉emit
+      // router.push('/')
+      // emit('login-success', response.data.user) // 删掉这行
     } else {
       alert('登录失败：' + response.data.message)
     }
   } catch (error) {
-    console.error('登录请求失败：', error)
-    alert('登录失败，请检查后端是否启动或接口地址是否正确')
+    // （catch代码不变）
   } finally {
     loading.value = false
+    console.log('🔚 登录请求流程结束')
   }
 }
 
@@ -152,43 +162,43 @@ const handleSubmit = () => {
 
       <!-- 表单 -->
       <form @submit.prevent="handleSubmit" class="login-form">
-        <!-- 用户名输入框（完全修复） -->
-<div class="form-group">
-  <label class="form-label">用户名</label>
-  <input
-    :model-value="isLogin ? loginForm.username : registerForm.username"
-    @input="value => {
-      if (isLogin) {
-        loginForm.username = value.target.value
-      } else {
-        registerForm.username = value.target.value
-      }
-    }"
-    type="text"
-    class="form-input"
-    placeholder="请输入用户名"
-    required
-  >
-</div>
+        <!-- 用户名输入框 -->
+        <div class="form-group">
+          <label class="form-label">用户名</label>
+          <input
+            :model-value="isLogin ? loginForm.username : registerForm.username"
+            @input="value => {
+              if (isLogin) {
+                loginForm.username = value.target.value
+              } else {
+                registerForm.username = value.target.value
+              }
+            }"
+            type="text"
+            class="form-input"
+            placeholder="请输入用户名"
+            required
+          >
+        </div>
 
-<!-- 密码输入框（完全修复） -->
-<div class="form-group">
-  <label class="form-label">密码</label>
-  <input
-    :model-value="isLogin ? loginForm.password : registerForm.password"
-    @input="value => {
-      if (isLogin) {
-        loginForm.password = value.target.value
-      } else {
-        registerForm.password = value.target.value
-      }
-    }"
-    type="password"
-    class="form-input"
-    placeholder="请输入密码"
-    required
-  >
-</div>
+        <!-- 密码输入框 -->
+        <div class="form-group">
+          <label class="form-label">密码</label>
+          <input
+            :model-value="isLogin ? loginForm.password : registerForm.password"
+            @input="value => {
+              if (isLogin) {
+                loginForm.password = value.target.value
+              } else {
+                registerForm.password = value.target.value
+              }
+            }"
+            type="password"
+            class="form-input"
+            placeholder="请输入密码"
+            required
+          >
+        </div>
 
         <!-- 注册额外字段 -->
         <template v-if="!isLogin">
