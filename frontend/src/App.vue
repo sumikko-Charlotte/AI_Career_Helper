@@ -6,12 +6,21 @@
   // 为便于新手开发者阅读，我将按模块分组变量/方法，并在每个模块前添加注释。
   // -----------------------------
   import { ref, reactive, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
-  import axios from 'axios'
-  import * as echarts from 'echarts'
-  import { ElMessage } from 'element-plus'
-  import { Monitor, ChatDotRound, DocumentChecked, User, Odometer, MagicStick, Calendar, SwitchButton, CircleCheck } from '@element-plus/icons-vue'
-  import Login from './components/Login.vue'
-  import DigitalHuman from './components/DigitalHuman.vue'
+import axios from 'axios'
+// 1. 引入 ECharts
+import * as echarts from 'echarts' 
+import { ElMessage } from 'element-plus'
+// 2. 引入所有用到的图标 (补全了 Trophy, Loading 等)
+import { 
+  Monitor, ChatDotRound, DocumentChecked, User, Odometer, MagicStick, 
+  Calendar, SwitchButton, CircleCheck, Reading, Trophy, Loading, Compass, Aim
+} from '@element-plus/icons-vue'
+
+// 引入组
+import Login from './components/Login.vue'
+import ResumeDoctor from './components/ResumeDoctor.vue'
+import DigitalHuman from './components/DigitalHuman.vue'
+ 
   // 后端基础地址
   const API_BASE = 'http://127.0.0.1:8000'
 
@@ -34,9 +43,91 @@
   const roadmapRole = ref('算法')
   const roadmapLoading = ref(false)
   const roadmapData = ref([])
+  const roadmapRadar = ref(null) // 存放雷达图数据
+const roadmapComment = ref('') // AI 寄语
+const radarChartRef = ref(null) // DOM 引用
+  const roadmapScore = ref(0)
+const roadmapSkills = ref([])
+const customColors = [
+  { color: '#f56c6c', percentage: 20 },
+  { color: '#e6a23c', percentage: 40 },
+  { color: '#5cb87a', percentage: 60 },
+  { color: '#1989fa', percentage: 80 },
+  { color: '#6f7ad3', percentage: 100 },
+]
   
-  const gradeOptions = ['大一', '大二', '大三']
-  const roleOptions = ['后端', '算法', '前端']
+  // --- 👇 修改部分：更丰富的选项数据 ---
+
+// 1. 年级选项 (扩充了研究生)
+const gradeOptions = [
+  '大一', '大二', '大三', '大四',
+  '研一', '研二', '研三', '博士'
+]
+
+// 2. 岗位方向 (按 CSV 数据进行了分组整理)
+// --- 👇 替换原有的 roleOptions 变量 ---
+const roleOptions = [
+  {
+    label: '互联网/AI',
+    options: ['互联网', '电子商务', '计算机软件', '生活服务', '企业服务', '医疗健康', '游戏', '社交网络与媒体', '人工智能', '云计算', '在线教育', '计算机服务', '大数据', '广告营销', '物联网新零售', '信息安全']
+  },
+  {
+    label: '电子/通信/半导体',
+    options: ['半导体', '电子', '通信', '智能硬件', '运营商', '计算机硬件', '硬件开发', '芯片', '集成电路', '消费电子', '网路设备', '增值服务']
+  },
+  {
+    label: '金融',
+    options: ['互联网金融', '银行', '投资', '融资', '证券', '期货基金', '保险', '租赁', '拍卖', '典当', '担保信托', '财富管理']
+  },
+  {
+    label: '专业服务',
+    options: ['咨询财务', '审计', '税务', '人力资源服务', '法律检测', '知识产权', '翻译']
+  },
+  {
+    label: '制造业',
+    options: ['电器器械', '金属制品', '非金属矿物制品', '橡胶塑料制品', '化学原料', '化学制品', '仪器仪表', '自动化设备', '印刷', '包装', '造纸', '铁路', '船舶', '航空航天材料', '电子设备', '新材料', '机械设备', '重工', '工业自动化', '原材料加工', '摸具']
+  },
+  {
+    label: '房地产/建筑',
+    options: ['装修装饰', '建筑工程', '土木工程', '机电工程', '物业管理', '房地产中介', '租赁', '建筑材料', '房地产开发经营', '建筑设计', '建筑工程咨询服务', '土地与公共设施管理', '工程施工']
+  },
+  {
+    label: '交通运输/物流',
+    options: ['即时配送', '快递', '公路', '物流', '同城货运', '跨境物流', '装卸搬运', '仓储业', '客运服务', '铁路', '机场']
+  },
+  {
+    label: '制药/医疗',
+    options: ['医疗服务', '医美服务', '医疗器械', 'IVD生物', '制药', '药物批发', '医疗研发外包']
+  },
+  {
+    label: '消费品/批发/零售',
+    options: ['批发', '零食进出口贸易', '食品/饮料/烟酒', '服装', '纺织', '家具', '家电', '珠宝首饰']
+  },
+  {
+    label: '广告/传媒/文化/体育',
+    options: ['文化艺术', '娱乐体育', '广告', '公关', '会展', '广播', '影视新闻', '出版社']
+  },
+  {
+    label: '教育培训',
+    options: ['辅导机构', '职业培训', '学前教育学校', '学历教育', '学士研究']
+  },
+  {
+    label: '服务业',
+    options: ['餐饮', '休闲', '娱乐运动', '健身保健', '养生', '景区', '摄影', '美容', '美发', '宠物服务', '婚庆', '家政服务', '旅游', '酒店']
+  },
+  {
+    label: '汽车',
+    options: ['新能源汽车', '汽车智能网联', '汽车经销商', '汽车后市场', '汽车研发', '制造汽车零件', '摩托车/自行车之制造', '4S店']
+  },
+  {
+    label: '能源/化工/环保',
+    options: ['光伏', '储能', '电池', '风电', '新能源环保', '电力', '热力', '水利', '石油', '石化', '矿产', '地质采掘', '冶炼']
+  },
+  {
+    label: '政府/非盈利机构/其他',
+    options: ['公共事业', '农业', '林业', '牧业', '渔业', '政府']
+  }
+]
   
   // -----------------------------
   // AI 简历医生模块
@@ -413,23 +504,73 @@ const handleApply = async (job) => {
   // 说明：调用后端 `/api/generate_roadmap`，并将返回的时间轴数据绑定到 `roadmapData`。
   // 前端显示 loading 状态并对异常进行友好提示。
   // -----------------------------
-  const generateRoadmap = async () => {
-    if (roadmapLoading.value) return
-    roadmapLoading.value = true
-    try {
-      const res = await axios.post(`${API_BASE}/api/generate_roadmap`, {
-        current_grade: roadmapGrade.value,
-        target_role: roadmapRole.value
-      })
-      roadmapData.value = res.data.roadmap || []
-      ElMessage.success('生涯路径已生成')
-    } catch (e) {
-      ElMessage.error('请确保后端 API 已启动')
-      console.error(e)
-    } finally {
-      roadmapLoading.value = false
-    }
+  // 修改 generateRoadmap 内部接收数据的逻辑
+const generateRoadmap = async () => {
+  if (!roadmapGrade.value || !roadmapRole.value) return ElMessage.warning('请先选择年级和方向')
+  roadmapLoading.value = true
+  
+  try {
+    const res = await axios.post(`${API_BASE}/api/generate_roadmap`, {
+      current_grade: roadmapGrade.value,
+      target_role: roadmapRole.value
+    })
+
+    // 接收数据
+    roadmapData.value = res.data.roadmap
+    roadmapRadar.value = res.data.radar_chart
+    roadmapComment.value = res.data.ai_comment
+    
+    ElMessage.success('规划生成成功')
+    
+    // 🔥 渲染雷达图 (一定要在 DOM 更新后)
+    setTimeout(() => {
+      initRadarChart()
+    }, 100)
+
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('生成失败')
+  } finally {
+    roadmapLoading.value = false
   }
+}
+
+// 🔥 新增：初始化雷达图函数
+const initRadarChart = () => {
+  if (!radarChartRef.value || !roadmapRadar.value) return
+  
+  const myChart = echarts.init(radarChartRef.value)
+  const option = {
+    radar: {
+      indicator: roadmapRadar.value.indicators,
+      shape: 'circle',
+      splitNumber: 4,
+      axisName: { color: '#666' },
+      splitArea: {
+        areaStyle: {
+          color: ['rgba(64,158,255, 0.1)', 'rgba(64,158,255, 0.2)', 'rgba(64,158,255, 0.3)', 'rgba(64,158,255, 0.4)'],
+          shadowColor: 'rgba(0, 0, 0, 0.1)',
+          shadowBlur: 10
+        }
+      }
+    },
+    series: [
+      {
+        name: '能力模型',
+        type: 'radar',
+        data: [
+          {
+            value: roadmapRadar.value.values,
+            name: '当前能力',
+            itemStyle: { color: '#409EFF' },
+            areaStyle: { opacity: 0.3 }
+          }
+        ]
+      }
+    ]
+  }
+  myChart.setOption(option)
+}
   
 const handleSelect = (key) => {
   activeMenu.value = key
@@ -574,152 +715,128 @@ const handleLogout = () => {
         <el-main class="page">
           <!-- 功能 0：生涯路径规划 -->
           <div v-if="activeMenu === '0'" class="animate-fade">
-            <div class="page-header">
-              <h2>📅 大学生全周期生涯规划</h2>
-              <p>从大一到大四，助力您成为目标岗位的优秀候选人</p>
-            </div>
-  
-            <div class="roadmap-container">
-              <div class="glass-card filter-card">
-                <div class="filter-section">
-                  <div class="filter-row">
-                    <div class="filter-item">
-                      <label>当前年级</label>
-                      <el-select v-model="roadmapGrade" placeholder="选择年级" style="width: 100%">
-                        <el-option v-for="grade in gradeOptions" :key="grade" :label="grade" :value="grade" />
-                      </el-select>
-                    </div>
-                    <div class="filter-item">
-                      <label>目标方向</label>
-                      <el-select v-model="roadmapRole" placeholder="选择方向" style="width: 100%">
-                        <el-option v-for="role in roleOptions" :key="role" :label="role" :value="role" />
-                      </el-select>
-                    </div>
-                  </div>
-                  <div class="filter-actions">
-                    <el-button type="primary" size="large" :loading="roadmapLoading" @click="generateRoadmap">
-                      ✨ 生成规划
-                    </el-button>
-                  </div>
-                </div>
-              </div>
-  
-              <div v-if="roadmapData.length > 0" class="glass-card timeline-card">
-                <div class="card-title">您的学习路径</div>
-                <el-timeline>
-                  <el-timeline-item
-                    v-for="(item, index) in roadmapData"
-                    :key="index"
-                    :timestamp="item.timestamp"
-                    placement="top"
-                    :hollow="index !== 0"
-                  >
-                    <div class="timeline-content" :class="{ 'active-stage': index === 0 }">
-                      <div class="timeline-title">{{ item.title }}</div>
-                      <div class="timeline-text">{{ item.content }}</div>
-                    </div>
-                  </el-timeline-item>
-                </el-timeline>
-              </div>
-  
-              <div v-else-if="!roadmapLoading" class="glass-card empty-roadmap">
-                <div class="empty-icon">📋</div>
-                <div class="empty-title">还未生成规划</div>
-                <div class="empty-desc">选择您的年级和目标方向，点击"生成规划"开始您的成长之旅</div>
-              </div>
-            </div>
+  <div class="page-header">
+    <h2>🚀 AI 生涯智航</h2>
+    <p>构建您的核心竞争力模型，规划最优职业路径</p>
+  </div>
+
+  <div class="glass-card control-bar-pro">
+  <div class="control-left">
+    <div class="control-title">
+      <el-icon class="icon-pulse"><Compass /></el-icon>
+      <span>规划导航</span>
+    </div>
+    <div class="control-subtitle">定制你的专属成长路线图</div>
+  </div>
+
+  <div class="control-right">
+    <el-select 
+      v-model="roadmapGrade" 
+      placeholder="当前年级" 
+      size="large" 
+      class="select-item"
+      effect="light"
+    >
+      <template #prefix><el-icon><User /></el-icon></template>
+      <el-option v-for="g in gradeOptions" :key="g" :label="g" :value="g"/>
+    </el-select>
+
+    <el-select 
+      v-model="roadmapRole" 
+      placeholder="目标方向" 
+      size="large" 
+      class="select-item"
+      effect="light"
+      filterable
+    >
+      <template #prefix><el-icon><Aim /></el-icon></template>
+      <el-option-group
+        v-for="group in roleOptions"
+        :key="group.label"
+        :label="group.label"
+      >
+        <el-option
+          v-for="item in group.options"
+          :key="item"
+          :label="item"
+          :value="item"
+        />
+      </el-option-group>
+    </el-select>
+
+    <el-button 
+      type="primary" 
+      size="large" 
+      class="generate-btn"
+      @click="generateRoadmap" 
+      :loading="roadmapLoading"
+      round
+    >
+      AI 智能生成 <el-icon class="el-icon--right"><MagicStick /></el-icon>
+    </el-button>
+  </div>
+</div>
+
+  <div v-if="roadmapData.length > 0">
+    <el-row :gutter="24">
+      <el-col :span="9">
+        <div class="glass-card dashboard-card">
+          <div class="card-title">📊 竞争力模型分析</div>
+          <div class="radar-chart-box" ref="radarChartRef"></div>
+          
+          <div class="ai-insight">
+            <div class="insight-title"><el-icon><Trophy /></el-icon> AI 导师洞察</div>
+            <p>{{ roadmapComment }}</p>
           </div>
-  
-          <!-- 功能 1：AI 简历医生 -->
-          <div v-if="activeMenu === '1'" class="animate-fade">
-            <div class="page-header">
-              <h2>AI 简历智能诊断</h2>
-              <p>模拟大模型对齐企业招聘标准：评分、维度雷达、结构化改进建议</p>
-            </div>
-  
-            <el-row :gutter="18">
-              <el-col :span="14">
-                <div class="glass-card">
-                  <div class="card-title">简历输入区</div>
-                  <el-input
-                    v-model="resumeText"
-                    type="textarea"
-                    :rows="14"
-                    resize="none"
-                    placeholder="粘贴简历内容（支持中文/英文混排）…"
-                  />
-                  <div class="card-actions">
-                    <el-button type="primary" size="large" :loading="resumeAnalyzing" @click="analyzeResume">
-                      诊断
-                    </el-button>
-                  </div>
-  
-                  <div v-if="resumeAnalyzing" class="progress-wrap">
-                    <div class="progress-title">AI 正在分析（模拟思考 2 秒）</div>
-                    <el-progress :percentage="resumeProgress" :stroke-width="10" status="success" />
+        </div>
+      </el-col>
+
+      <el-col :span="15">
+        <div class="glass-card roadmap-timeline-card">
+          <div class="card-title">📅 关键里程碑规划</div>
+          <el-timeline>
+            <el-timeline-item
+              v-for="(item, i) in roadmapData"
+              :key="i"
+              :color="item.color"
+              :icon="item.icon === 'Loading' ? Loading : (item.icon === 'CircleCheck' ? CircleCheck : '')"
+              size="large"
+            >
+              <div class="timeline-box" :class="{'active-node': item.status === 'process'}">
+                <div class="node-header">
+                  <span class="time-tag">{{ item.timestamp }}</span>
+                  <span class="node-title">{{ item.title }}</span>
+                  <el-tag v-if="item.status === 'done'" type="success" size="small" effect="dark">已完成</el-tag>
+                  <el-tag v-else-if="item.status === 'process'" type="primary" size="small" effect="dark">进行中</el-tag>
+                </div>
+                
+                <p class="node-content">{{ item.content }}</p>
+                
+                <div class="node-resources" v-if="item.resources && item.resources.length">
+                  <div class="res-label">📚 推荐资源：</div>
+                  <div class="res-chips">
+                    <span v-for="(r, idx) in item.resources" :key="idx" class="res-chip">
+                      {{ r }}
+                    </span>
                   </div>
                 </div>
-              </el-col>
-  
-              <el-col :span="10">
-                <div class="glass-card report-card">
-                  <div class="card-title">结构化诊断报告</div>
-  
-                  <div v-if="!resumeResult" class="empty-hint">
-                    点击“诊断”后，将展示评分、维度雷达与可执行改进建议。
-                  </div>
-  
-                  <div v-else>
-                    <div class="score-row">
-                      <div class="score-left">
-                        <div class="score-number">{{ resumeResult.score }}</div>
-                        <div class="score-label">综合评分</div>
-                      </div>
-                      <div class="score-right">
-                        <div class="score-level">等级：{{ resumeResult.level || '—' }}</div>
-                        <div class="score-summary">{{ resumeResult.summary }}</div>
-                      </div>
-                    </div>
-  
-                    <div class="mini-chart" ref="resumeRadarRef"></div>
-  
-                    <el-divider content-position="left">强弱项</el-divider>
-                    <div class="pill-list">
-                      <el-tag
-                        v-for="(s, i) in (resumeResult.highlights?.strengths || []).slice(0, 3)"
-                        :key="'st'+i"
-                        type="success"
-                        effect="dark"
-                      >
-                        {{ s }}
-                      </el-tag>
-                      <el-tag
-                        v-for="(w, i) in (resumeResult.highlights?.weaknesses || []).slice(0, 2)"
-                        :key="'wk'+i"
-                        type="danger"
-                        effect="dark"
-                      >
-                        {{ w }}
-                      </el-tag>
-                    </div>
-  
-                    <el-divider content-position="left">优先改进建议</el-divider>
-                    <el-timeline class="suggestions">
-                      <el-timeline-item
-                        v-for="(item, i) in (resumeResult.suggestions || []).slice(0, 4)"
-                        :key="i"
-                        type="primary"
-                        :timestamp="'建议 ' + (i + 1)"
-                      >
-                        {{ item }}
-                      </el-timeline-item>
-                    </el-timeline>
-                  </div>
-                </div>
-              </el-col>
-            </el-row>
-          </div>
-  
+              </div>
+            </el-timeline-item>
+          </el-timeline>
+        </div>
+      </el-col>
+    </el-row>
+  </div>
+
+  <div v-else-if="!roadmapLoading" class="empty-state-box">
+    <div class="empty-emoji">🧭</div>
+    <h3>配置您的生涯导航</h3>
+    <p>请在上方选择年级与方向，AI 将为您生成专属能力雷达与成长路径。</p>
+  </div>
+</div>
+<div v-if="activeMenu === '1'" class="animate-fade">
+  <ResumeDoctor />
+</div>
           <!-- 功能 2：模拟面试 -->
           <div v-if="activeMenu === '2'" class="animate-fade">
             <div class="page-header">
@@ -1246,4 +1363,238 @@ const handleLogout = () => {
 /* 让图标稍微对齐一下 */
 .apply-success-text .el-icon {
   font-size: 14px;
+}
+/* --- 生涯规划 Pro 样式 --- */
+.control-area {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+.filter-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.score-panel {
+  border-top: 1px solid #eee;
+  padding-top: 15px;
+  animation: fadeIn 0.6s ease;
+}
+.score-info {
+  margin-bottom: 10px;
+}
+.score-info .label {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+.skill-tags {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.tag-label { font-size: 12px; color: #999; }
+
+.timeline-area {
+  padding: 10px 5px;
+}
+.timeline-card {
+  padding: 16px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e4e7ed;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+  transition: all 0.3s;
+}
+.timeline-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.1);
+}
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.card-header h4 { margin: 0; font-size: 16px; color: #303133; }
+.tags-row { display: flex; gap: 6px; }
+.content-text { color: #606266; line-height: 1.6; font-size: 14px; margin-bottom: 12px; }
+
+.resources-box {
+  background: #fdf6ec; /* 浅橙色背景 */
+  padding: 10px;
+  border-radius: 6px;
+  border-left: 3px solid #e6a23c;
+}
+.res-label {
+  font-size: 12px;
+  color: #d48806;
+  font-weight: bold;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.res-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.res-link {
+  font-size: 12px;
+  color: #606266;
+  background: rgba(255,255,255,0.6);
+  padding: 2px 8px;
+  border-radius: 4px;
+}/* --- 智能版生涯规划 CSS --- */
+.control-bar {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  padding: 20px;
+  margin-bottom: 30px;
+  background: white;
+}
+.control-input { width: 180px; }
+
+.dashboard-card { background: white; padding: 20px; height: 100%; }
+.roadmap-timeline-card { background: white; padding: 20px; min-height: 500px; }
+.card-title { font-size: 18px; font-weight: bold; margin-bottom: 20px; color: #303133; border-left: 4px solid #409EFF; padding-left: 10px; }
+
+.radar-chart-box { width: 100%; height: 300px; margin-bottom: 10px; }
+
+.ai-insight {
+  background: linear-gradient(135deg, #f0f9eb 0%, #e1f3d8 100%);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #c2e7b0;
+}
+.insight-title { color: #67C23A; font-weight: bold; margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
+.ai-insight p { color: #606266; font-size: 13px; line-height: 1.6; margin: 0; }
+
+/* 时间轴样式 */
+.timeline-box {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  transition: all 0.3s;
+}
+.timeline-box:hover { transform: translateX(5px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+.active-node {
+  background: #ecf5ff;
+  border-color: #b3d8ff;
+  box-shadow: 0 4px 12px rgba(64,158,255,0.15);
+}
+
+.node-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.time-tag { font-weight: bold; color: #409EFF; }
+.node-title { font-weight: bold; color: #303133; font-size: 15px; }
+.node-content { color: #606266; font-size: 14px; margin-bottom: 10px; }
+
+.node-resources { display: flex; align-items: center; gap: 10px; border-top: 1px dashed #e4e7ed; padding-top: 8px; }
+.res-label { font-size: 12px; color: #909399; }
+.res-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.res-chip {
+  font-size: 12px; color: #606266; background: white; border: 1px solid #dcdfe6;
+  padding: 2px 8px; border-radius: 12px;
+}
+
+.empty-state-box { text-align: center; padding: 60px; color: #909399; }
+.empty-emoji { font-size: 60px; margin-bottom: 20px; }
+/* --- 生涯规划控制栏 Pro 样式 --- */
+
+/* 1. 外层容器：左右布局，增加投影和圆角 */
+.control-bar-pro {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 30px;
+  margin-bottom: 30px;
+  background: rgba(255, 255, 255, 0.95); /* 磨砂白 */
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(149, 157, 165, 0.1); /* 柔和投影 */
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+/* 2. 左侧标题区 */
+.control-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.control-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #303133;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.icon-pulse {
+  color: #409EFF;
+  animation: pulse 2s infinite;
+}
+.control-subtitle {
+  font-size: 13px;
+  color: #909399;
+  letter-spacing: 0.5px;
+}
+
+/* 3. 右侧操作区：弹性布局，防止重叠 */
+.control-right {
+  display: flex;
+  align-items: center;
+  gap: 16px; /* 控件之间的间距 */
+}
+
+/* 下拉框样式优化 */
+.select-item {
+  width: 180px; /* 增加宽度，防止文字截断 */
+  transition: all 0.3s;
+}
+.select-item:hover {
+  transform: translateY(-2px); /* 悬浮微动效 */
+}
+
+/* 按钮样式优化 */
+.generate-btn {
+  padding: 0 24px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #409EFF 0%, #3a8ee6 100%);
+  border: none;
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
+  transition: all 0.3s;
+}
+.generate-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 6px 16px rgba(64, 158, 255, 0.4);
+}
+
+/* 定义简单的呼吸动画 */
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* 📱 适配手机端：如果是小屏幕，自动变成竖排 */
+@media (max-width: 768px) {
+  .control-bar-pro {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 20px;
+  }
+  .control-right {
+    width: 100%;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .select-item, .generate-btn {
+    width: 100% !important;
+  }
 }

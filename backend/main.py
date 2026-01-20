@@ -357,6 +357,157 @@ def apply_job(req: ApplyRequest):
         writer.writerow([req.username, req.job_name, req.salary, now_time, "已投递"])
 
     return {"message": "投递成功", "status": "success"}
+# --- Resume Doctor Mock Interface (Day 1) ---
+
+# 引入 UploadFile，因为我们要接收文件
+from fastapi import UploadFile, File
+
+@app.post("/api/resume/analyze")
+async def analyze_resume(file: UploadFile = File(...)):
+    """
+    Day 1 简历分析接口 (Mock版)
+    目前只接收文件，不读取内容，直接返回固定 JSON
+    """
+    # 模拟稍微延时一下，让前端 loading 转一会儿
+    import time
+    time.sleep(1.5)
+    
+    # 打印一下文件名，确认后端收到了
+    print(f"收到简历文件: {file.filename}")
+
+    # 返回 Mock 数据
+    return {
+        "summary": "【Mock】该简历结构完整，教育背景清晰，但项目描述偏泛，缺乏具体数据支撑。",
+        "strengths": [
+            "教育背景与目标岗位匹配度高",
+            "有两段相关实习经历",
+            "技术栈关键词覆盖较全 (Python, Vue)"
+        ],
+        "weaknesses": [
+            "项目成果量化不足（缺少数字）",
+            "STAR 法则运用不熟练",
+            "自我评价过于笼统"
+        ],
+        "suggestions": [
+            "建议在项目 A 中补充性能优化前后的对比数据（如响应时间提升 50%）",
+            "将“负责后端开发”改为“使用 FastAPI 重构核心接口，提升并发能力”",
+            "补充 GitHub 链接或技术博客地址"
+        ]
+    }
+# --- 👇 核心功能 6: 生涯路径规划 (Mock) ---
+
+# 定义请求数据格式
+class RoadmapRequest(BaseModel):
+    current_grade: str
+    target_role: str
+
+# --- 👇 智能版：生涯规划接口 (带雷达图数据) ---
+@app.post("/api/generate_roadmap")
+def generate_roadmap(req: RoadmapRequest):
+    import time
+    import random
+    time.sleep(1) # 模拟 AI 运算
+    
+    # 1. 定义不同方向的技能维度 (用于雷达图)
+    # 模拟数据：根据年级生成“当前能力值”，目标岗位是“满分标准”
+    radar_config = {}
+    
+    if "算法" in req.target_role:
+        radar_indicators = [
+            {"name": "数学基础", "max": 100},
+            {"name": "Python/C++", "max": 100},
+            {"name": "论文复现", "max": 100},
+            {"name": "模型调优", "max": 100},
+            {"name": "工程落地", "max": 100}
+        ]
+        # 模拟不同年级的分数 (大一低，大三高)
+        base = {"大一": 30, "大二": 50, "大三": 70, "大四": 85}.get(req.current_grade, 40)
+        current_scores = [base + random.randint(-5, 10) for _ in range(5)]
+        
+    elif "前端" in req.target_role:
+        radar_indicators = [
+            {"name": "HTML/CSS", "max": 100},
+            {"name": "JavaScript", "max": 100},
+            {"name": "Vue/React", "max": 100},
+            {"name": "工程化", "max": 100},
+            {"name": "UI审美", "max": 100}
+        ]
+        base = {"大一": 35, "大二": 55, "大三": 75, "大四": 90}.get(req.current_grade, 40)
+        current_scores = [base + random.randint(-5, 10) for _ in range(5)]
+        
+    else: # 默认后端/其他
+        radar_indicators = [
+            {"name": "编程语言", "max": 100},
+            {"name": "数据库", "max": 100},
+            {"name": "分布式", "max": 100},
+            {"name": "中间件", "max": 100},
+            {"name": "系统设计", "max": 100}
+        ]
+        base = {"大一": 30, "大二": 50, "大三": 70, "大四": 85}.get(req.current_grade, 40)
+        current_scores = [base + random.randint(-5, 10) for _ in range(5)]
+
+    # 2. 生成“AI 导师寄语”
+    ai_comment = f"同学你好！基于你的{req.current_grade}身份，你的{radar_indicators[0]['name']}基础尚可，但在'{radar_indicators[3]['name']}'方面与{req.target_role}岗位要求存在 {100 - current_scores[3]}% 的差距。建议重点强化实战项目。"
+
+    # 3. 生成更美观的时间轴数据 (增加 status 字段)
+    # 逻辑：大一之前的算 done，当前的算 process，未来的算 wait
+    roadmap = []
+    stages = [
+        {"time": "大一上", "title": "通识与筑基", "content": "高数/C++ 均分 85+，加入技术社团", "res": ["CS50 公开课", "C++ Prime"]},
+        {"time": "大一下", "title": "编程入门", "content": "完成简易管理系统，熟悉 Git/Linux", "res": ["Git 飞行手册", "鸟哥的 Linux 私房菜"]},
+        {"time": "大二全", "title": "核心栈构建", "content": f"系统学习 {req.target_role} 核心框架，刷题 200+", "res": ["LeetCode", "官方文档"]},
+        {"time": "大三上", "title": "项目实战", "content": "参与高含金量开源项目或学科竞赛", "res": ["GitHub Trending", "Kaggle"]},
+        {"time": "大三下", "title": "实习冲刺", "content": "制作简历，模拟面试，投递暑期实习", "res": ["牛客网", "Boss 直聘"]},
+        {"time": "大四", "title": "秋招定局", "content": "查漏补缺，冲击 SP Offer", "res": ["Offershow"]}
+    ]
+
+    # 简单粗暴的状态判断逻辑
+    grades = ["大一", "大二", "大三", "大四"]
+    try:
+        curr_idx = grades.index(req.current_grade[:2]) # 取前两个字 "大一"
+    except:
+        curr_idx = 0
+
+    final_roadmap = []
+    for i, stage in enumerate(stages):
+        status = "wait"
+        color = "#909399" # 灰色
+        icon = "CircleCheck"
+        
+        # 简单模拟：当前年级之前的都算完成
+        # 注意：这里只是简单演示，真实逻辑会更复杂
+        stage_grade_idx = 0
+        if "大一" in stage["time"]: stage_grade_idx = 0
+        elif "大二" in stage["time"]: stage_grade_idx = 1
+        elif "大三" in stage["time"]: stage_grade_idx = 2
+        elif "大四" in stage["time"]: stage_grade_idx = 3
+
+        if stage_grade_idx < curr_idx:
+            status = "done"
+            color = "#67C23A" # 绿色
+        elif stage_grade_idx == curr_idx:
+            status = "process"
+            color = "#409EFF" # 蓝色
+            icon = "Loading"
+        
+        final_roadmap.append({
+            "timestamp": stage["time"],
+            "title": stage["title"],
+            "content": stage["content"],
+            "resources": stage["res"],
+            "status": status,
+            "color": color,
+            "icon": icon
+        })
+
+    return {
+        "radar_chart": {
+            "indicators": radar_indicators,
+            "values": current_scores
+        },
+        "ai_comment": ai_comment,
+        "roadmap": final_roadmap
+    }
 if __name__ == "__main__":
     import uvicorn
     # 👇 这行前面要留 4 个空格
