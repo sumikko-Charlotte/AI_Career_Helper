@@ -21,6 +21,10 @@ import Login from './components/Login.vue'
 import ResumeDoctor from './components/ResumeDoctor.vue'
 import DigitalHuman from './components/DigitalHuman.vue'
  
+const goToResumeDoctor = () => {
+  // '_blank' 表示在新标签页打开，不关闭当前网页
+  window.open('http://localhost:8501', '_blank');
+}
   // 后端基础地址
   const API_BASE = 'http://127.0.0.1:8000'
 
@@ -639,31 +643,34 @@ const handleLogout = () => {
         </div>
   
         <el-menu
-          class="side-menu"
-          :default-active="activeMenu"
-          background-color="transparent"
-          text-color="rgba(255,255,255,0.72)"
-          active-text-color="#ffffff"
-          @select="handleSelect"
-        >
-          <el-menu-item index="0">
-            <el-icon><Calendar /></el-icon>
-            <span>生涯路径规划</span>
-          </el-menu-item>
-          <el-menu-item index="1">
-            <el-icon><DocumentChecked /></el-icon>
-            <span>AI 简历医生</span>
-          </el-menu-item>
-          <el-menu-item index="2">
-            <el-icon><ChatDotRound /></el-icon>
-            <span>模拟面试</span>
-          </el-menu-item>
-          <el-menu-item index="3">
-            <el-icon><Odometer /></el-icon>
-            <span>竞争力沙盘</span>
-          </el-menu-item>
-        </el-menu>
+  class="side-menu"
+  :default-active="activeMenu"
+  background-color="transparent"
+  text-color="rgba(255,255,255,0.72)"
+  active-text-color="#ffffff"
+  @select="handleSelect"
+>
+  <el-menu-item index="0">
+    <el-icon><Calendar /></el-icon>
+    <span>生涯路径规划</span>
+  </el-menu-item>
+
+  <el-menu-item index="1">
+  <el-icon><DocumentChecked /></el-icon>
+  <span>AI 简历医生</span>
+</el-menu-item>
+  <el-menu-item index="2">
+    <el-icon><ChatDotRound /></el-icon>
+    <span>模拟面试</span>
+  </el-menu-item>
+
+  <el-menu-item index="3">
+    <el-icon><Odometer /></el-icon>
+    <span>竞争力沙盘</span>
+  </el-menu-item>
+</el-menu>
   
+
       <div class="aside-footer">
         <div class="user-chip">
           <el-avatar :size="34" style="background: #409EFF">
@@ -834,6 +841,8 @@ const handleLogout = () => {
     <p>请在上方选择年级与方向，AI 将为您生成专属能力雷达与成长路径。</p>
   </div>
 </div>
+
+          <!-- 功能 1：AI 简历医生 -->
 <div v-if="activeMenu === '1'" class="animate-fade">
   <ResumeDoctor />
 </div>
@@ -1597,4 +1606,22 @@ const handleLogout = () => {
   .select-item, .generate-btn {
     width: 100% !important;
   }
+}
+/* AI 按钮特效 */
+.ai-jump-btn {
+  background: linear-gradient(135deg, #FF4B4B 0%, #FF914D 100%); /* Streamlit 风格渐变红 */
+  color: white;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 20px; /* 圆角 */
+  font-weight: bold;
+  cursor: pointer;
+  margin-left: 15px; /* 和左边的按钮拉开点距离 */
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px rgba(255, 75, 75, 0.2);
+}
+
+.ai-jump-btn:hover {
+  transform: translateY(-2px); /* 鼠标悬停上浮 */
+  box-shadow: 0 6px 12px rgba(255, 75, 75, 0.3);
 }

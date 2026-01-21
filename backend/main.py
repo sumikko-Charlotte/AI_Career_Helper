@@ -9,6 +9,46 @@ from pydantic import BaseModel
 import time
 import random
 from datetime import datetime
+from fastapi import FastAPI, UploadFile, File, HTTPException
+# 导入你刚搬进来的模块
+# 如果放在同级目录：
+from services.resume_parser import *
+from services.ai_advisor import *
+# 如果放在 services 文件夹：from services import resume_parser, ai_advisor
+
+app = FastAPI()
+
+@app.post("/api/analyze_resume")
+async def analyze_resume_endpoint(file: UploadFile = File(...)):
+    """
+    简历诊断接口
+    输入：PDF文件
+    输出：JSON格式的诊断报告
+    """
+    # 1. 验证文件类型
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="只支持 PDF 文件")
+
+    # 2. 读取文件内容 (pypdf 需要文件对象)
+    # 这里的 file.file 就是一个类文件对象，可以直接传给我们写的 parser
+    try:
+        # 注意：Streamlit 的 uploader 和 FastAPI 的 UploadFile 略有不同
+        # pypdf 的 PdfReader 可以直接读 file.file
+        resume_text = resume_parser.extract_text_from_pdf(file.file)
+        
+        # 3. 调用 AI 分析
+        # 这里建议加上 try-except 处理 AI 调用失败的情况
+        analysis_result = ai_advisor.analyze_resume(resume_text)
+        
+        if not analysis_result:
+            raise HTTPException(status_code=500, detail="AI 分析失败")
+            
+        # 4. 返回 JSON
+        return analysis_result
+
+    except Exception as e:
+        print(f"Error: {e}")
+        raise HTTPException(status_code=500, detail=f"服务器内部错误: {str(e)}")
 
 app = FastAPI()
 

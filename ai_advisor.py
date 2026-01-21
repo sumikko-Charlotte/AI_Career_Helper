@@ -1,11 +1,24 @@
-from openai import OpenAI
 import json
+import os
+from openai import OpenAI
+from dotenv import load_dotenv # 👈 刚刚装的库
 
-# 配置你的 API Key
+# 1. 加载 .env 文件
+load_dotenv()
+
+# 2. 从环境里拿 Key，而不是写死在代码里
+api_key = os.getenv("DEEPSEEK_API_KEY")
+
+# 防呆检查
+if not api_key:
+    raise ValueError("⚠️ 没找到 Key！请检查 .env 文件有没有建好。")
+
 client = OpenAI(
-    api_key="sk-d7497f8619b44e1da0b225aedef5ff9b", 
+    api_key=api_key, 
     base_url="https://api.deepseek.com" 
 )
+
+# ... 下面保持不变 ...
 
 # --- 👇 新增：清洗函数放在这里 👇 ---
 def clean_ai_response(raw_response):
