@@ -401,37 +401,34 @@ def apply_job(req: ApplyRequest):
 
 # 引入 UploadFile，因为我们要接收文件
 from fastapi import UploadFile, File
-
+class GenerateResumeRequest(BaseModel):
+    focus_direction: str = "通用"          # 优化方向
+    diagnosis: dict | None = None          # 诊断结果
+# --- Day 1 简历分析接口 (Mock版 - 增强数据返回) ---
 @app.post("/api/resume/analyze")
 async def analyze_resume(file: UploadFile = File(...)):
-    """
-    Day 1 简历分析接口 (Mock版)
-    目前只接收文件，不读取内容，直接返回固定 JSON
-    """
-    # 模拟稍微延时一下，让前端 loading 转一会儿
     import time
-    time.sleep(1.5)
+    time.sleep(1.5) # 模拟 AI 思考
     
-    # 打印一下文件名，确认后端收到了
-    print(f"收到简历文件: {file.filename}")
-
-    # 返回 Mock 数据
+    # 👇👇👇 这里是核心修改：增加了 score_rationale 字段 👇👇👇
     return {
-        "summary": "【Mock】该简历结构完整，教育背景清晰，但项目描述偏泛，缺乏具体数据支撑。",
+        "score": 82, # 增加具体分数
+        "score_rationale": "基础得分 70 分，因项目经历描述清晰 +5 分，技术栈匹配 +5 分；但缺少量化成果数据 -8 分，排版稍显拥挤 -5 分。",
+        "summary": "该简历结构完整，教育背景清晰，但项目描述偏泛，缺乏具体数据支撑。",
         "strengths": [
             "教育背景与目标岗位匹配度高",
-            "有两段相关实习经历",
-            "技术栈关键词覆盖较全 (Python, Vue)"
+            "有两段相关实习经历，具备实战意识",
+            "技术栈关键词覆盖较全 (Python, Vue, FastAPI)"
         ],
         "weaknesses": [
-            "项目成果量化不足（缺少数字）",
-            "STAR 法则运用不熟练",
-            "自我评价过于笼统"
+            "项目成果量化不足（缺少具体提升百分比）",
+            "STAR 法则运用不熟练，过程描述多于结果",
+            "自我评价过于笼统，未体现核心竞争力"
         ],
         "suggestions": [
             "建议在项目 A 中补充性能优化前后的对比数据（如响应时间提升 50%）",
             "将“负责后端开发”改为“使用 FastAPI 重构核心接口，提升并发能力”",
-            "补充 GitHub 链接或技术博客地址"
+            "补充 GitHub 链接或技术博客地址，增加可信度"
         ]
     }
 # --- 👇 核心功能 6: 生涯路径规划 (Mock) ---
@@ -547,6 +544,111 @@ def generate_roadmap(req: RoadmapRequest):
         },
         "ai_comment": ai_comment,
         "roadmap": final_roadmap
+    }
+# --- 👇 新增功能：简历生成 (Resume Generation) ---
+
+
+# --- 3. 简历生成接口 (Pro 增强版) ---
+@app.post("/api/resume/generate")
+def generate_resume(req: GenerateResumeRequest):
+    import time
+    import random
+    time.sleep(1.5) # 模拟 AI 深度思考
+    
+    # 1. 提取上下文信息
+    direction = req.focus_direction
+    diagnosis = req.diagnosis or {}
+    strengths = diagnosis.get("strengths", [])
+    
+    # 2. 根据求职方向，智能匹配技术栈模板 (模拟 AI 的知识库)
+    if "算法" in direction or "AI" in direction:
+        target_role = "算法工程师 / AI 研究员"
+        skills_template = """
+* **深度学习**：熟练掌握 PyTorch/TensorFlow，熟悉 Transformer、BERT、ResNet 等经典架构。
+* **数据处理**：精通 Pandas, NumPy, Matplotlib，具备海量数据清洗与特征工程经验。
+* **开发工具**：熟悉 Linux 环境开发，掌握 Docker 容器化部署，熟练使用 Git。
+"""
+        project_tech = "PyTorch, HuggingFace, FastAPI"
+        
+    elif "前端" in direction or "Web" in direction:
+        target_role = "高级前端开发工程师"
+        skills_template = """
+* **核心框架**：深入理解 Vue3 原理，熟练使用 Composition API，了解 React/Next.js 生态。
+* **工程化**：熟悉 Webpack/Vite 配置，具备前端性能优化（首屏加载、SSR）实战经验。
+* **样式与交互**：精通 CSS3/Sass，熟练使用 TailwindCSS，追求极致的 UI/UX 体验。
+"""
+        project_tech = "Vue3, Element Plus, ECharts, TypeScript"
+        
+    else: # 默认/全栈/后端
+        target_role = direction
+        skills_template = """
+* **后端技术**：熟练掌握 Python (FastAPI/Django) 或 Java (Spring Boot)，了解高并发架构设计。
+* **数据库**：精通 MySQL 索引优化，熟悉 Redis 缓存策略与应用场景。
+* **系统运维**：熟悉 CI/CD 流程，掌握 Nginx 配置与 Linux 常用命令。
+"""
+        project_tech = "FastAPI, Vue3, PostgreSQL, Docker"
+
+    # 3. 动态生成亮点 (基于诊断结果)
+    highlight_text = "具备扎实的计算机科学基础，代码风格规范。"
+    if strengths:
+        # 把诊断出的前3个亮点拼进去
+        highlight_text = f"**{strengths[0]}**，**{strengths[1] if len(strengths)>1 else ''}**。经 AI 诊断，您的核心竞争力在于{strengths[-1] if len(strengths)>2 else '学习能力'}。"
+
+    # 4. 生成内容 (使用更专业的 Markdown 排版)
+    generated_content = f"""
+# [你的姓名] 
+> 求职意向：{target_role} | 状态：随时到岗
+> 电话：138-xxxx-xxxx | 邮箱：email@example.com | 📍 北京
+
+---
+
+## 💡 AI 优化摘要
+> **本次优化重点**：
+> 1. 根据您的求职方向 **{direction}**，重构了技能清单，突出关键词命中率。
+> 2. 引入 **STAR 法则** 优化项目描述，强化了“数据成果”的展示。
+> 3. 基于诊断报告，将您的 **{len(strengths)} 个核心亮点** 植入到了自我评价中。
+
+---
+
+## 🎓 教育背景
+**北京邮电大学** | 人工智能学院 | 人工智能专业 | 本科 (2024-2028)
+* **核心绩效**：专业排名前 10% (GPA 3.8/4.0)
+* **主修课程**：数据结构与算法 (95)、机器学习导论 (92)、计算机网络 (90)、操作系统 (88)
+* **校园奖项**：校级一等奖学金、全国大学生数学建模竞赛省一等奖
+
+## 🛠 专业技能
+{skills_template}
+* **通用能力**：CET-6 (580+)，具备良好的英文文档阅读能力；热衷开源技术。
+
+## 💻 项目经历 (精修版)
+
+### 🚀 **AI 简历全科医生平台 (AI Career Helper)**
+**角色：全栈开发负责人** | 技术栈：{project_tech}
+* **背景 (Situation)**：针对大学生求职简历“缺乏针对性”和“排版混乱”的痛点，开发一款基于 LLM 的智能辅助系统。
+* **任务 (Task)**：负责从 0 到 1 搭建前后端分离架构，实现简历解析、智能诊断与自动生成功能。
+* **行动 (Action)**：
+    * **架构设计**：基于 **FastAPI** 重构后端接口，设计 RESTful API 规范，解决了原系统“评分理由丢失”的数据一致性问题。
+    * **体验优化**：前端采用 **Vue3 + Element Plus** 实现响应式布局，开发“双屏联动”交互模式，让用户能实时对比修改效果。
+    * **性能调优**：通过异步 I/O 处理文件上传，引入 Redis 缓存高频请求，将大文件解析速度提升了 **40%**。
+* **结果 (Result)**：项目上线首周获得 200+ 次调用，GitHub Star 数突破 50+，生成的简历模板采纳率达 95%。
+
+### 🏆 **基于深度学习的图像识别系统**
+**角色：算法核心成员** | 技术栈：PyTorch, OpenCV
+* **行动**：复现 ResNet50 经典论文，针对特定数据集进行微调（Fine-tuning）。
+* **行动**：设计数据增强（Data Augmentation）策略，解决了样本不平衡问题，模型在测试集准确率提升 **5%**。
+* **结果**：该项目最终作为课程优秀大作业进行展示，代码被收录进实验室代码库。
+
+## 📜 自我评价
+* {highlight_text}
+* 具备极强的工程落地能力，善于在压力下快速定位 Bug（曾在一周内完成核心模块重构）。
+* 技术视野开阔，保持对新技术（如 LLM Agent、RAG）的敏锐关注，致力于用技术创造实际价值。
+
+---
+*注：本简历由 AI 深度生成，建议结合真实经历微调数据。*
+"""
+    return {
+        "success": True,
+        "content": generated_content.strip()
     }
 if __name__ == "__main__":
     import uvicorn
