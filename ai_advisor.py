@@ -1,74 +1,79 @@
 import json
 import os
+import sys
+from pathlib import Path
 from openai import OpenAI
 from dotenv import load_dotenv
-from pathlib import Path
 
 # ==========================================
-# 👇 终极修复：直接指定绝对路径 (硬编码) 👇
+# 🛠️ 修复 1: 强制 Windows 输出 UTF-8 (解决报错核心)
 # ==========================================
+# 这一行是解决 'ascii' codec can't encode... 的关键
+sys.stdout.reconfigure(encoding='utf-8')
 
-# 1. 直接写死你的项目根目录 (根据你的截图填写的)
-# 注意：前面的 r 表示不转义，防止 Windows 路径斜杠报错
+# ==========================================
+# 📂 配置路径与 Key (保留你指定的绝对路径)
+# ==========================================
+# 1. 你的项目根目录
 project_root = Path(r"C:\Users\sumik\Desktop\AI_Project")
-
-# 2. 拼出 .env 的位置
 env_path = project_root / ".env"
 
-# 3. 🐛 调试：先看看目录下到底有什么文件？
-# (这一步会把根目录下所有文件名打印出来，如果叫 .env.txt 你一眼就能看到)
-if project_root.exists():
-    print(f"📂 正在扫描目录: {project_root}")
-    print(f"📄 目录下的文件有: {os.listdir(project_root)}")
-else:
-    print(f"❌ 目录不存在: {project_root}")
-
-# 4. 尝试加载
-print(f"🔍 正在尝试加载: {env_path}")
+# 2. 加载环境变量
+print(f"🔍 [AI Advisor] 正在加载配置文件: {env_path}")
 load_dotenv(dotenv_path=env_path, override=True)
 
-# 5. 获取 Key
+# 3. 获取 API Key
 api_key = os.getenv("DEEPSEEK_API_KEY")
 
-# 6. 如果还是没有...
+# 4. 检查 Key
 if not api_key:
-    # 尝试找一下是不是叫 .env.txt
-    txt_path = project_root / ".env.txt"
-    if txt_path.exists():
-        raise ValueError(f"⚠️ 找到了！你的文件被命名为了 '.env.txt' (有个隐藏后缀)。\n请在文件夹里重命名，把 '.txt' 删掉！")
-    
-    raise ValueError(f"⚠️ 彻底没找到 Key。\n请确认 C:\\Users\\sumik\\Desktop\\AI_Project 下确实有一个叫 .env 的文件。")
+    # 尝试找一下 .env.txt 这种常见错误
+    if (project_root / ".env.txt").exists():
+        print("⚠️ 警告: 发现了 .env.txt，请重命名为 .env")
+    print(f"❌ [AI Advisor] 错误: 未找到 API Key，请检查 {env_path}")
+    # 可以在这里临时填入 Key 进行测试 (但不建议提交)
+    # api_key = "sk-..." 
+else:
+    print(f"✅ [AI Advisor] API Key 加载成功")
 
-# ==========================================
-# 👆 修复结束 👆
-# ==========================================
-
+# 5. 初始化 OpenAI Client
 client = OpenAI(
     api_key=api_key, 
     base_url="https://api.deepseek.com" 
 )
 
-# ... 下面的代码不要动 ...
-# --- 清洗函数 (保持不变) ---
+# ==========================================
+# 🧹 工具函数
+# ==========================================
 def clean_ai_response(raw_response):
+    """清洗 AI 返回的 Markdown 格式，提取纯 JSON"""
+    if not raw_response:
+        return ""
     clean_text = raw_response.replace("```json", "").replace("```", "")
     return clean_text.strip()
 
+# ==========================================
+# 🧠 核心功能 1: 简历诊断 (含评分理由)
+# ==========================================
 def analyze_resume(resume_text):
-    # 👇 关键修正：为了配合你的前端展示，Prompt 必须包含 score_rationale 和 evidence
-    # 如果这里不改，你的前端网页上“评分依据”和“证据框”就是空的
+    """
+    分析简历，返回包含 score_rationale 的完整 JSON
+    """
+    print("🚀 [AI Advisor] 正在调用 DeepSeek 进行深度诊断...")
+    
+    # 这个 Prompt 保留了你要求的所有字段
     system_prompt = """
     你是一位资深技术面试官。请分析简历并严格输出纯 JSON 格式。
     
-    【重要要求】
-    1. "score_rationale": 必须用一句话解释为什么给这个分数。
+    【核心要求】
+    1. "score_rationale": 必须用一句话解释为什么给这个分数（这是核心功能，必填）。
     2. "suggestions": 提建议时，必须在 "evidence" 字段指出简历原文的问题。
 
     返回格式（纯JSON）：
     {
         "score": (0-100整数),
         "score_rationale": "评分依据",
-        "summary": "点评",
+        "summary": "综合点评",
         "pros": ["亮点1", "亮点2"],
         "cons": ["不足1", "不足2"],
         "suggestions": [
@@ -77,7 +82,7 @@ def analyze_resume(resume_text):
                 "evidence": "简历原文引用"
             }
         ],
-        "matched_jobs": ["岗位1", "岗位2"]
+        "matched_jobs": ["推荐岗位1", "推荐岗位2"]
     }
     """
     
@@ -94,8 +99,33 @@ def analyze_resume(resume_text):
         
         raw_result = response.choices[0].message.content
         clean_result = clean_ai_response(raw_result)
-        return json.loads(clean_result) 
         
+        # 解析 JSON
+        return json.loads(clean_result)
+            
     except Exception as e:
-        print(f"AI 调用出错: {e}")
+        # 使用 repr() 防止中文报错炸毁整个程序
+        print(f"❌ 分析过程出错: {repr(e)}")
         return None
+
+# ==========================================
+# ✍️ 核心功能 2: 简历生成 (你的新功能)
+# ==========================================
+def generate_resume_markdown(prompt: str, temperature: float = 0.6) -> str:
+    """
+    生成/优化简历内容（返回 Markdown 文本）
+    """
+    print("✍️ [AI Advisor] 正在调用 DeepSeek 生成优化版简历...")
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": "你是严谨的简历优化专家，请直接输出 Markdown 格式的简历内容，不要包含 ```markdown 标记。"},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=temperature,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"❌ 生成过程出错: {repr(e)}")
+        return f"AI 生成服务暂时不可用: {str(e)}"
