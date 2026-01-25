@@ -1,16 +1,15 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, onMounted } from 'vue' // Removed computed as we will bind directly
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 
-// 修复：正确定义router变量（去掉$，或使用$router）
 const router = useRouter() 
-// 定义props和emits
 const emit = defineEmits(['login-success'])
 
 // 响应式数据
-const isLogin = ref(true) // true: 登录模式, false: 注册模式
+const isLogin = ref(true) 
 const loading = ref(false)
+const rememberMe = ref(false)
 
 // 表单数据
 const loginForm = ref({
@@ -25,91 +24,94 @@ const registerForm = ref({
   target_role: ''
 })
 
-const currentUsername = computed({
-  get() {
-    return isLogin.value ? loginForm.value.username : registerForm.value.username
-  },
-  set(val) {
-    if (isLogin.value) {
-      loginForm.value.username = val
-    } else {
-      registerForm.value.username = val
-    }
+// 页面加载时检查是否有“记住我”的历史
+onMounted(() => {
+  const savedUser = localStorage.getItem('remembered_username')
+  if (savedUser) {
+    loginForm.value.username = savedUser
+    rememberMe.value = true
   }
 })
 
-const currentPassword = computed({
-  get() {
-    return isLogin.value ? loginForm.value.password : registerForm.value.password
-  },
-  set(val) {
-    if (isLogin.value) {
-      loginForm.value.password = val
-    } else {
-      registerForm.value.password = val
-    }
-  }
-})
+const gradeOptions = [
+  '大一', '大二', '大三', '大四', 
+  '研一', '研二', '研三', 
+  '博士', '已毕业/工作'
+]
 
-// 表单选项
-const gradeOptions = ['大一', '大二', '大三', '大四', '研究生']
-const roleOptions = ['前端', '后端', '算法', '全栈', '测试', '产品', '设计', '其他']
+const roleOptions = [
+  'Java开发工程师',
+  'C++开发工程师',
+  'Python开发工程师',
+  'Go开发工程师',
+  '前端开发工程师',
+  '全栈开发工程师',
+  '算法工程师 (AI/大模型)',
+  '大数据开发工程师',
+  '移动端开发 (iOS/Android)',
+  '测试/测试开发',
+  '运维/DevOps',
+  '产品经理 (PM)',
+  'UI/UX 设计师',
+  '其他'
+]
 
-// 切换登录/注册模式
 const toggleMode = () => {
   isLogin.value = !isLogin.value
-  // 切换时清空表单
   if (isLogin.value) {
     registerForm.value = { username: '', password: '', grade: '', target_role: '' }
   } else {
+    // Switch to register, clear login password but maybe keep username if needed, or clear all
     loginForm.value = { username: '', password: '' }
   }
 }
 
-// 提交登录（修复核心问题 + 增加调试日志）
-const handleLogin = async () => {
-  // 打印日志，验证是否获取到输入内容
-  console.log('📝 输入的用户名：', loginForm.value.username)
-  console.log('📝 输入的密码：', loginForm.value.password)
+const handleForgotPassword = () => {
+  alert('功能开发中：请联系管理员重置密码')
+}
 
-  // 简单判断（避免空值）
+const handleLogin = async () => {
+  console.log('📝 Login Attempt:', loginForm.value)
+
   if (!loginForm.value.username.trim() || !loginForm.value.password.trim()) {
-    alert('请输入用户名和密码')
+    alert('请输入账号和密码')
     return
   }
 
   loading.value = true
-   try {
-    console.log('🚀 开始发送登录请求')
+  try {
+    console.log('🚀 Sending login request')
     const response = await axios.post(
       'http://127.0.0.1:8000/api/login',
       loginForm.value
     )
 
-    console.log('✅ 登录请求响应：', response.data)
+    console.log('✅ Response:', response.data)
     if (response.data.success) {
-      alert('登录成功！')
-      // 方案1：只保留emit，让父组件统一处理跳转（推荐）
-      emit('login-success', response.data.user)
-      // 注释掉直接的路由跳转，避免双重跳转
-      // router.push('/') 
+      if (rememberMe.value) {
+        localStorage.setItem('remembered_username', loginForm.value.username)
+      } else {
+        localStorage.removeItem('remembered_username')
+      }
 
-      // 方案2：如果父组件没有监听login-success，就保留router.push，删掉emit
-      // router.push('/')
-      // emit('login-success', response.data.user) // 删掉这行
+      alert('登录成功！')
+      emit('login-success', response.data.user)
     } else {
       alert('登录失败：' + response.data.message)
     }
   } catch (error) {
-    // （catch代码不变）
+    // (原有逻辑)
+    alert('登录请求失败，请检查后端')
   } finally {
     loading.value = false
-    console.log('🔚 登录请求流程结束')
+    console.log('🔚 Login flow ended')
   }
 }
 
-// 提交注册
 const handleRegister = async () => {
+  // Debug log to see if data is binding correctly now
+  console.log('📝 Register Attempt:', registerForm.value)
+
   if (!registerForm.value.username || !registerForm.value.password ||
       !registerForm.value.grade || !registerForm.value.target_role) {
     alert('请填写所有必填字段')
@@ -121,8 +123,8 @@ const handleRegister = async () => {
     const response = await axios.post('http://127.0.0.1:8000/api/register', registerForm.value)
     if (response.data.success) {
       alert('注册成功！请登录')
-      isLogin.value = true // 切换到登录模式
-      loginForm.value.username = registerForm.value.username // 保留用户名
+      isLogin.value = true 
+      loginForm.value.username = registerForm.value.username 
       registerForm.value = { username: '', password: '', grade: '', target_role: '' }
     } else {
       alert(response.data.message)
@@ -135,7 +137,6 @@ const handleRegister = async () => {
   }
 }
 
-// 提交表单
 const handleSubmit = () => {
   if (isLogin.value) {
     handleLogin()
@@ -147,12 +148,9 @@ const handleSubmit = () => {
 
 <template>
   <div class="login-container">
-    <!-- 背景渐变 -->
     <div class="background-gradient"></div>
 
-    <!-- 登录框 -->
     <div class="login-card">
-      <!-- 标题 -->
       <div class="login-header">
         <h1 class="login-title">职航——AI辅助的大学生生涯成长平台</h1>
         <p class="login-subtitle">
@@ -160,78 +158,91 @@ const handleSubmit = () => {
         </p>
       </div>
 
-      <!-- 表单 -->
       <form @submit.prevent="handleSubmit" class="login-form">
-        <!-- 用户名输入框 -->
-        <div class="form-group">
-          <label class="form-label">用户名</label>
-          <input
-            :model-value="isLogin ? loginForm.username : registerForm.username"
-            @input="value => {
-              if (isLogin) {
-                loginForm.username = value.target.value
-              } else {
-                registerForm.username = value.target.value
-              }
-            }"
-            type="text"
-            class="form-input"
-            placeholder="请输入用户名"
-            required
-          >
+        
+        <div v-if="isLogin">
+            <div class="form-group">
+            <label class="form-label">账号</label>
+            <input
+                v-model="loginForm.username"
+                type="text"
+                class="form-input"
+                placeholder="请输入用户名 / 手机号 / 邮箱" 
+                required
+            >
+            </div>
+
+            <div class="form-group" style="margin-top: 20px;">
+            <label class="form-label">密码</label>
+            <input
+                v-model="loginForm.password"
+                type="password"
+                class="form-input"
+                placeholder="请输入密码"
+                required
+            >
+            </div>
+
+            <div class="form-options">
+            <label class="remember-me">
+                <input type="checkbox" v-model="rememberMe"> 
+                <span>记住我</span>
+            </label>
+            <button type="button" @click="handleForgotPassword" class="forgot-password">
+                忘记密码？
+            </button>
+            </div>
         </div>
 
-        <!-- 密码输入框 -->
-        <div class="form-group">
-          <label class="form-label">密码</label>
-          <input
-            :model-value="isLogin ? loginForm.password : registerForm.password"
-            @input="value => {
-              if (isLogin) {
-                loginForm.password = value.target.value
-              } else {
-                registerForm.password = value.target.value
-              }
-            }"
-            type="password"
-            class="form-input"
-            placeholder="请输入密码"
-            required
-          >
-        </div>
+        <div v-else>
+            <div class="form-group">
+            <label class="form-label">账号</label>
+            <input
+                v-model="registerForm.username"
+                type="text"
+                class="form-input"
+                placeholder="设置用户名" 
+                required
+            >
+            </div>
 
-        <!-- 注册额外字段 -->
-        <template v-if="!isLogin">
-          <!-- 年级 -->
-          <div class="form-group">
+            <div class="form-group" style="margin-top: 20px;">
+            <label class="form-label">密码</label>
+            <input
+                v-model="registerForm.password"
+                type="password"
+                class="form-input"
+                placeholder="设置密码"
+                required
+            >
+            </div>
+
+            <div class="form-group" style="margin-top: 20px;">
             <label class="form-label">年级</label>
             <select v-model="registerForm.grade" class="form-select" required>
-              <option value="">请选择年级</option>
-              <option v-for="grade in gradeOptions" :key="grade" :value="grade">
+                <option value="">请选择年级</option>
+                <option v-for="grade in gradeOptions" :key="grade" :value="grade">
                 {{ grade }}
-              </option>
+                </option>
             </select>
-          </div>
+            </div>
 
-          <!-- 意向岗位 -->
-          <div class="form-group">
+            <div class="form-group" style="margin-top: 20px;">
             <label class="form-label">意向岗位</label>
             <select v-model="registerForm.target_role" class="form-select" required>
-              <option value="">请选择意向岗位</option>
-              <option v-for="role in roleOptions" :key="role" :value="role">
+                <option value="">请选择意向岗位</option>
+                <option v-for="role in roleOptions" :key="role" :value="role">
                 {{ role }}
-              </option>
+                </option>
             </select>
-          </div>
-        </template>
+            </div>
+        </div>
 
-        <!-- 提交按钮 -->
         <button type="submit" class="submit-button" :disabled="loading">
           {{ loading ? '处理中...' : (isLogin ? '登录' : '注册') }}
         </button>
       </form>
 
-      <!-- 切换模式 -->
       <div class="toggle-mode">
         <span class="toggle-text">
           {{ isLogin ? '还没有账户？' : '已有账户？' }}
@@ -245,6 +256,7 @@ const handleSubmit = () => {
 </template>
 
 <style scoped>
+/* --- 样式完全保持不变 --- */
 .login-container {
   position: relative;
   min-height: 100vh;
@@ -255,7 +267,6 @@ const handleSubmit = () => {
   overflow: hidden;
 }
 
-/* 深色蓝调背景渐变 */
 .background-gradient {
   position: absolute;
   top: 0;
@@ -266,7 +277,6 @@ const handleSubmit = () => {
   z-index: -1;
 }
 
-/* 添加一些科技感装饰 */
 .background-gradient::before {
   content: '';
   position: absolute;
@@ -296,7 +306,6 @@ const handleSubmit = () => {
   50% { transform: translateY(-20px); }
 }
 
-/* Glassmorphism 登录卡片 */
 .login-card {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(20px);
@@ -310,7 +319,6 @@ const handleSubmit = () => {
   z-index: 1;
 }
 
-/* 标题区域 */
 .login-header {
   text-align: center;
   margin-bottom: 32px;
@@ -333,11 +341,10 @@ const handleSubmit = () => {
   margin: 0;
 }
 
-/* 表单样式 */
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  /* gap: 20px; Removed gap here to control spacing manually inside v-if blocks */
 }
 
 .form-group {
@@ -361,19 +368,21 @@ const handleSubmit = () => {
   color: #ffffff;
   font-size: 16px;
   transition: all 0.3s ease;
+  width: 100%; /* Ensure inputs take full width */
+  box-sizing: border-box; /* Fix padding issues */
 }
 
 .form-input::placeholder {
   color: rgba(255, 255, 255, 0.5);
 }
-/* 下拉框文字颜色 */
+
 .form-select {
-  color: #ffffff !important; /* 强制白色文字 */
+  color: #ffffff !important;
 }
-/* 下拉选项文字颜色 */
+
 .form-select option {
-  color: #333333 !important; /* 选项文字设为深灰色，在白色背景上清晰可见 */
-  background-color: #ffffff !important; /* 选项背景设为白色 */
+  color: #333333 !important;
+  background-color: #ffffff !important;
 }
 
 .form-input:focus,
@@ -384,7 +393,45 @@ const handleSubmit = () => {
   box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
 }
 
-/* 提交按钮 */
+.form-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 15px;
+  font-size: 14px;
+}
+
+.remember-me {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  user-select: none;
+}
+
+.remember-me input[type="checkbox"] {
+  accent-color: #60a5fa;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.forgot-password {
+  background: none;
+  border: none;
+  color: #60a5fa;
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+  transition: color 0.3s;
+}
+
+.forgot-password:hover {
+  color: #a78bfa;
+  text-decoration: underline;
+}
+
 .submit-button {
   padding: 14px;
   border: none;
@@ -395,7 +442,8 @@ const handleSubmit = () => {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  margin-top: 8px;
+  margin-top: 25px; /* Added margin top since gap was removed from parent */
+  width: 100%;
 }
 
 .submit-button:hover:not(:disabled) {
@@ -409,7 +457,6 @@ const handleSubmit = () => {
   transform: none;
 }
 
-/* 切换模式 */
 .toggle-mode {
   text-align: center;
   margin-top: 24px;
@@ -438,7 +485,6 @@ const handleSubmit = () => {
   color: #a78bfa;
 }
 
-/* 响应式设计 */
 @media (max-width: 480px) {
   .login-card {
     padding: 30px 20px;

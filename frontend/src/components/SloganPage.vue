@@ -22,11 +22,12 @@
   import { useRouter } from 'vue-router'
   
   const router = useRouter()
-  
-  // 跳转到注册页
   const goToRegister = () => {
-    router.push('/register')
-  }
+  // ❌ 之前的代码可能是 router.push('/register') ->这是错的，因为你没有注册页
+  
+  // ✅ 请改成跳转到登录页
+  router.push('/login') 
+}
   
   // 可选：自动跳转（比如3秒后自动跳转到注册页）
   // setTimeout(() => {

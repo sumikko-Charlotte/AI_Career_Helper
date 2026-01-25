@@ -1,2 +1,4 @@
 username,password,grade,target_role
-test,123456,大一,前端
+张明,123789,大一,前端
+test,123456,大三,后端
+test01,123654,大二,C++开发工程师

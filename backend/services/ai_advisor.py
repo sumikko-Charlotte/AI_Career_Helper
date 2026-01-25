@@ -18,36 +18,37 @@ def clean_ai_response(raw_response):
     clean_text = raw_response.replace("```json", "").replace("```", "").strip()
     return clean_text
 
-def analyze_resume(resume_text):
-    # 👇 修改了 Prompt：增加了 "score_rationale" 和 "evidence" 的要求
-    system_prompt = """
-    你是一位严厉但专业的资深技术面试官。请阅读用户的简历，并严格按照下面的 JSON 格式返回分析结果。
-    
-    【重要要求】
-    1. 评分要有依据，必须在 "score_rationale" 中说明扣分点。
-    2. 提建议时必须“有凭有据”，在 "evidence" 字段中引用简历原文，或者指出缺少的具体板块。
+# ... (上面的代码保持不变) ...
 
-    返回格式要求（不要包含 Markdown，只返回纯 JSON）：
+def analyze_resume(resume_text):
+    print("🚀 [AI Advisor] 正在调用 DeepSeek 进行深度诊断...")
+    
+    # 👇👇👇 修改了这里的 JSON Key，为了匹配前端 👇👇👇
+    system_prompt = """
+    你是一位资深技术面试官。请分析简历并严格输出纯 JSON 格式。
+    
+    【核心要求】
+    1. "score_rationale": 必须用一句话解释为什么给这个分数。
+    2. "suggestions": 提建议时，必须在 "evidence" 字段指出简历原文的问题。
+
+    返回格式（纯JSON）：
     {
         "score": (0-100整数),
-        "score_rationale": "一句话解释评分依据（例如：基础扎实，但缺少量化数据，因此扣分）",
-        "summary": "50字以内的专业点评",
-        "pros": ["亮点1", "亮点2", "亮点3"],
-        "cons": ["不足1", "不足2", "不足3"],
+        "score_rationale": "评分依据",
+        "summary": "综合点评",
+        "strengths": ["亮点1", "亮点2"],   <-- 改成了 strengths
+        "weaknesses": ["不足1", "不足2"],   <-- 改成了 weaknesses
         "suggestions": [
             {
-                "advice": "具体的修改建议（例如：使用STAR法则重写）",
-                "evidence": "关联的简历原文（例如：简历中写道'负责后端开发'，但未提及具体并发量）"
-            },
-            {
-                "advice": "具体的修改建议2",
-                "evidence": "关联的简历原文或缺失说明"
+                "advice": "修改建议",
+                "evidence": "简历原文引用"
             }
         ],
-        "matched_jobs": ["岗位1", "岗位2", "岗位3"]
+        "matched_jobs": ["推荐岗位1", "推荐岗位2"]
     }
     """
     
+    # ... (下面的代码保持不变) ...
     try:
         response = client.chat.completions.create(
             model="deepseek-chat",

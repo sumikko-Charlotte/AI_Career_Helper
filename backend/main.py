@@ -7,9 +7,14 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
-
+from fastapi.responses import RedirectResponse
+from typing import List
+import shutil # 👈 新增
+from fastapi.staticfiles import StaticFiles # 👈 新增
 app = FastAPI()
 
+os.makedirs("static/avatars", exist_ok=True) # 自动创建文件夹
+app.mount("/static", StaticFiles(directory="static"), name="static")
 # --- 1. 跨域配置 (必不可少) ---
 app.add_middleware(
     CORSMiddleware,
@@ -63,9 +68,61 @@ JOB_DATABASE = [
     {"职业分类": "测试", "岗位": "自动化测试工程师", "关键词": "Selenium, PyTest", "平均薪资": "12k-20k"},
 ]
 
+# --- 1. 定义历史记录的数据模型 ---
+class HistoryItem(BaseModel):
+    username: str
+    action_type: str  # "诊断" 或 "生成"
+    title: str        # 例如 "Java工程师简历诊断"
+    score: int
+    date: str
+    status: str       # "已完成"
+
+# --- 2. 新增：添加历史记录接口 ---
+@app.post("/api/history/add")
+def add_history(item: HistoryItem):
+    file_path = "data/history.csv"
+    os.makedirs("data", exist_ok=True)
+    
+    # 写入 CSV
+    file_exists = os.path.exists(file_path)
+    with open(file_path, "a", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["username", "action_type", "title", "score", "date", "status"])
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(item.dict())
+    
+    return {"success": True, "message": "记录已保存"}
+
+# --- 3. 新增：获取历史记录接口 ---
+@app.get("/api/history")
+def get_history(username: str):
+    file_path = "data/history.csv"
+    if not os.path.exists(file_path):
+        return {"success": True, "data": []}
+    
+    records = []
+    with open(file_path, "r", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row['username'] == username:
+                records.append(row)
+    
+    # 按时间倒序排列 (最新的在前面)
+    records.reverse()
+    return {"success": True, "data": records}
+# 新增根路径处理
+@app.get("/")
+async def root():
+    return {"message": "AI简历医生后端服务运行中"}
+
 # ==========================================
 #  核心功能 A: 用户系统 (登录/注册)
 # ==========================================
+@app.get("/")
+async def redirect_to_frontend():
+    # 假设你的前端运行在 5173 端口
+    return RedirectResponse(url="http://localhost:5173")
+
 @app.post("/api/login")
 def login(request: LoginRequest):
     users_file = "users.csv"
@@ -183,6 +240,80 @@ def apply_job(req: ApplyRequest):
         csv.writer(f).writerow([req.username, req.job_name, req.salary, datetime.datetime.now(), "已投递"])
     return {"message": "投递成功", "status": "success"}
 
+# ... 之前的代码 ...
+
+# --- 1. 定义用户资料模型 ---
+class UserProfile(BaseModel):
+    username: str
+    avatar: str = ""  # 👈 新增这一行
+    email: str = ""
+    phone: str = ""
+    city: str = ""
+    style: str = "专业正式"
+    file_format: str = "PDF"
+    notify: bool = True
+    auto_save: bool = True
+
+# --- 2. 获取用户资料接口 ---
+@app.get("/api/user/profile")
+def get_profile(username: str):
+    file_path = "data/profiles.csv"
+    if not os.path.exists(file_path):
+        # 如果还没存过资料，返回一个默认的空资料
+        return {"success": True, "data": {"username": username, "email": "", "phone": "", "city": "", "style": "专业正式", "file_format": "PDF"}}
+    
+    with open(file_path, "r", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row.get('username') == username:
+                # 转换布尔值 (CSV里存的是字符串)
+                row['notify'] = row.get('notify') == 'True'
+                row['auto_save'] = row.get('auto_save') == 'True'
+                return {"success": True, "data": row}
+    
+    # 没找到也返回默认
+    return {"success": True, "data": {"username": username}}
+
+# --- 3. 更新用户资料接口 ---
+@app.post("/api/user/profile")
+def update_profile(profile: UserProfile):
+    file_path = "data/profiles.csv"
+    os.makedirs("data", exist_ok=True)
+    
+    # 读取所有现存资料
+    profiles = []
+    if os.path.exists(file_path):
+        with open(file_path, "r", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            profiles = list(reader)
+    
+    # 查找并更新，或者新增
+    updated = False
+    for row in profiles:
+        if row.get('username') == profile.username:
+            row.update(profile.dict()) # 更新字段 (这里会自动包含 avatar)
+            # 把布尔值转回字符串存CSV
+            row['notify'] = str(profile.notify)
+            row['auto_save'] = str(profile.auto_save)
+            updated = True
+            break
+    
+    if not updated:
+        # 新增一条
+        new_row = profile.dict()
+        new_row['notify'] = str(profile.notify)
+        new_row['auto_save'] = str(profile.auto_save)
+        profiles.append(new_row)
+    
+    # 写回文件
+    with open(file_path, "w", encoding="utf-8-sig", newline="") as f:
+        # 👇 关键修改点：在列表里加入了 "avatar"
+        fieldnames = ["username", "avatar", "email", "phone", "city", "style", "file_format", "notify", "auto_save"]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(profiles)
+        
+    return {"success": True, "message": "资料已保存"}
 # ==========================================
 #  核心功能 F: 简历医生 (诊断 + 生成)
 # ==========================================
@@ -201,6 +332,53 @@ async def analyze_resume(file: UploadFile = File(...)):
         "suggestions": ["补充性能对比数据", "增加熟练度描述", "添加 GitHub 链接"]
     }
 
+# --- 4. 修改密码接口 ---
+class ChangePwdRequest(BaseModel):
+    username: str
+    old_password: str
+    new_password: str
+
+@app.post("/api/user/change_password")
+def change_password(req: ChangePwdRequest):
+    users_file = "users.csv"
+    rows = []
+    updated = False
+    
+    # 1. 读取并查找
+    with open(users_file, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row['username'] == req.username:
+                if row['password'] != req.old_password:
+                    return {"success": False, "message": "旧密码不正确"}
+                row['password'] = req.new_password # 更新密码
+                updated = True
+            rows.append(row)
+    
+    # 2. 写回文件
+    if updated:
+        with open(users_file, 'w', encoding='utf-8', newline='') as f:
+            # 注意：这里要跟你 users.csv 的表头一致
+            fieldnames = ['username', 'password', 'grade', 'target_role']
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        return {"success": True, "message": "密码修改成功"}
+    
+    return {"success": False, "message": "用户不存在"}
+
+# --- 5. 上传头像接口 ---
+@app.post("/api/user/upload_avatar")
+async def upload_avatar(file: UploadFile = File(...)):
+    # 生成一个文件名，避免冲突
+    file_path = f"static/avatars/{file.filename}"
+    
+    # 保存文件到本地
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    # 返回可访问的 URL
+    return {"success": True, "url": f"http://127.0.0.1:8000/{file_path}"}
 @app.post("/api/resume/generate")
 def generate_resume(req: GenerateResumeRequest):
     time.sleep(1.5)
