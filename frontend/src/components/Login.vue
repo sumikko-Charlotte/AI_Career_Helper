@@ -95,7 +95,17 @@ const handleLogin = async () => {
       }
 
       alert('登录成功！')
-      emit('login-success', response.data.user)
+      
+      // 👇👇👇 核心修改：如果是 admin，强制跳后台 👇👇👇
+      if (loginForm.value.username === 'admin') {
+          console.log('👑 管理员登录，正在跳转后台...')
+          router.push('/admin/dashboard')
+      } else {
+          // 普通用户，执行原有逻辑（触发父组件事件）
+          emit('login-success', response.data.user)
+      }
+      // 👆👆👆 修改结束 👆👆👆
+
     } else {
       alert('登录失败：' + response.data.message)
     }
@@ -107,7 +117,6 @@ const handleLogin = async () => {
     console.log('🔚 Login flow ended')
   }
 }
-
 const handleRegister = async () => {
   // Debug log to see if data is binding correctly now
   console.log('📝 Register Attempt:', registerForm.value)
