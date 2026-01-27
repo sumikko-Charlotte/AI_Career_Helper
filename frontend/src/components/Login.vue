@@ -36,7 +36,7 @@ onMounted(() => {
 const gradeOptions = [
   '大一', '大二', '大三', '大四', 
   '研一', '研二', '研三', 
-  '博士', '已毕业/工作'
+  '博士', '已毕业/工作','管理员'
 ]
 
 const roleOptions = [
@@ -53,6 +53,7 @@ const roleOptions = [
   '运维/DevOps',
   '产品经理 (PM)',
   'UI/UX 设计师',
+  '系统管理',
   '其他'
 ]
 
@@ -70,6 +71,7 @@ const handleForgotPassword = () => {
   alert('功能开发中：请联系管理员重置密码')
 }
 
+// 👇👇👇 修复后的登录逻辑 👇👇👇
 const handleLogin = async () => {
   console.log('📝 Login Attempt:', loginForm.value)
 
@@ -87,7 +89,14 @@ const handleLogin = async () => {
     )
 
     console.log('✅ Response:', response.data)
+    
     if (response.data.success) {
+      // 🟢 关键修复点 1：必须先把 user 取出来！
+      const user = response.data.user
+      
+      // 调试看一下拿到的 user 是什么
+      console.log('👤 User info:', user) 
+
       if (rememberMe.value) {
         localStorage.setItem('remembered_username', loginForm.value.username)
       } else {
@@ -96,22 +105,21 @@ const handleLogin = async () => {
 
       alert('登录成功！')
       
-      // 👇👇👇 核心修改：如果是 admin，强制跳后台 👇👇👇
-      if (loginForm.value.username === 'admin') {
-          console.log('👑 管理员登录，正在跳转后台...')
-          router.push('/admin/dashboard')
+      // 🟢 关键修复点 2：现在 user 变量存在了，判断就不会报错了
+      if (user.grade === '管理员' || user.username === 'admin') {
+          console.log('👑 检测到管理员身份，跳转后台')
+          await router.push('/admin/dashboard')
       } else {
-          // 普通用户，执行原有逻辑（触发父组件事件）
-          emit('login-success', response.data.user)
+          // 普通用户
+          emit('login-success', user)
       }
-      // 👆👆👆 修改结束 👆👆👆
 
     } else {
       alert('登录失败：' + response.data.message)
     }
   } catch (error) {
-    // (原有逻辑)
-    alert('登录请求失败，请检查后端')
+    console.error('登录错误详情:', error)
+    alert('登录请求失败，请检查控制台报错')
   } finally {
     loading.value = false
     console.log('🔚 Login flow ended')

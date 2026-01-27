@@ -7,6 +7,7 @@ import Dashboard from '../views/admin/Dashboard.vue'
 import UserManage from '../views/admin/UserManage.vue'
 import PromptConfig from '../views/admin/PromptConfig.vue'
 import ResumeTasks from '../views/admin/ResumeTasks.vue' 
+import AdminProfile from '../views/admin/AdminProfile.vue'
 
 const routes = [
   {
@@ -38,6 +39,7 @@ const routes = [
       { path: 'users', component: UserManage },
       { path: 'tasks', component: ResumeTasks },
       { path: 'prompts', component: PromptConfig },
+      { path: 'profile', component: AdminProfile },
     ]
   }
 ]

@@ -4,14 +4,45 @@ import {
   Document, Monitor 
 } from '@element-plus/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
+import { ref, onMounted, onUnmounted } from 'vue' // 引入生命周期
+import axios from 'axios'
 
 const router = useRouter()
 const route = useRoute()
+const API_BASE = 'http://127.0.0.1:8000'
+
+// 🟢 定义响应式数据，而不是死数据
+const adminName = ref('加载中...')
+const adminAvatar = ref('') 
+
+// 🟢 获取管理员简略信息
+const fetchAdminHeader = async () => {
+  try {
+    const res = await axios.get(`${API_BASE}/api/admin/profile`)
+    if (res.data.success) {
+      // 如果后端有昵称就显示昵称，没有就显示用户名
+      adminName.value = res.data.data.nickname || res.data.data.username
+      adminAvatar.value = res.data.data.avatar
+    }
+  } catch (e) {
+    console.error('获取顶栏信息失败', e)
+  }
+}
 
 const handleLogout = () => {
   localStorage.removeItem('remembered_username')
   router.push('/')
 }
+
+// 🟢 监听更新事件
+onMounted(() => {
+  fetchAdminHeader() // 刚进来时获取一次
+  window.addEventListener('admin-profile-updated', fetchAdminHeader) // 监听更新信号
+})
+
+onUnmounted(() => {
+  window.removeEventListener('admin-profile-updated', fetchAdminHeader) // 销毁监听
+})
 </script>
 
 <template>
@@ -55,15 +86,29 @@ const handleLogout = () => {
       
       <el-container>
         <el-header class="admin-header">
-          <div class="header-left">
-            <span class="welcome-text">欢迎回来，管理员</span>
-          </div>
-          <div class="header-right">
-            <el-button type="danger" plain size="small" :icon="SwitchButton" @click="handleLogout">
-              退出登录
-            </el-button>
-          </div>
-        </el-header>
+  <div class="header-left">
+    <span class="welcome-text">欢迎回来，管理员</span>
+  </div>
+  <div class="header-right">
+    <el-button link @click="router.push('/admin/profile')" class="profile-link">
+  <el-avatar 
+    :size="32" 
+    :src="adminAvatar" 
+    style="background:#EFE3B2; color:#101C4D; margin-right:8px;"
+  >
+    {{ adminName.charAt(0) }}
+  </el-avatar>
+  
+  <span style="color:#606266; font-weight:600;">{{ adminName }}</span>
+</el-button>
+
+    <el-divider direction="vertical" />
+
+    <el-button type="danger" plain size="small" :icon="SwitchButton" @click="handleLogout">
+      退出
+    </el-button>
+  </div>
+</el-header>
         
         <el-main class="admin-main">
           <router-view v-slot="{ Component }">
@@ -78,6 +123,14 @@ const handleLogout = () => {
 </template>
 
 <style scoped>
+.profile-link:hover {
+  opacity: 0.8;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px; /* 调整间距 */
+}
 .layout-container { height: 100vh; }
 
 /* 复刻 UI 组的深蓝色调 */
