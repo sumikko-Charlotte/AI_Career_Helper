@@ -5,7 +5,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { User, Message, Iphone, Edit, Upload } from '@element-plus/icons-vue'
 
 const loading = ref(false)
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
+console.debug('[UserProfile] API_BASE ->', API_BASE)
 
 // 隐藏的文件上传 Input
 const fileInput = ref(null)

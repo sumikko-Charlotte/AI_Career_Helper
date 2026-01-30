@@ -5,6 +5,8 @@ import { useRouter } from 'vue-router'
 
 const router = useRouter() 
 const emit = defineEmits(['login-success'])
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
+console.debug('[Login] API_BASE ->', API_BASE)
 
 // 响应式数据
 const isLogin = ref(true) 
@@ -82,7 +84,7 @@ const handleLogin = async () => {
   try {
     console.log('🚀 Sending login request')
     const response = await axios.post(
-      'http://127.0.0.1:8000/api/login',
+      `${API_BASE}/api/login`,
       loginForm.value
     )
 
@@ -129,7 +131,7 @@ const handleRegister = async () => {
 
   loading.value = true
   try {
-    const response = await axios.post('http://127.0.0.1:8000/api/register', registerForm.value)
+    const response = await axios.post(`${API_BASE}/api/register`, registerForm.value)
     if (response.data.success) {
       alert('注册成功！请登录')
       isLogin.value = true 

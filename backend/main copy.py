@@ -1,10 +1,13 @@
 # backend/main.py
-from fastapi import FastAPI
+import json
+import os
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import time
 import random
 from datetime import datetime
+from openai import OpenAI
 
 app = FastAPI()
 
@@ -23,6 +26,52 @@ class ResumeRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+
+# --- 新增：虚拟实验体验 & 生涯规划整合 ---
+class AnalyzeExperimentRequest(BaseModel):
+    answers: dict
+    career: str | None = None
+
+class GenerateCareerRequest(BaseModel):
+    personality_json: dict
+    experiment_markdown: str
+    note: str | None = ""
+
+class VirtualCareerQuestionsRequest(BaseModel):
+    career: str
+
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-d3a066f75e744cd58708b9af635d3606")
+deepseek_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+
+def _deepseek_markdown(system_prompt: str, user_prompt: str) -> str:
+    try:
+        resp = deepseek_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.4,
+        )
+        return (resp.choices[0].message.content or "").strip()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DeepSeek 调用失败: {e}")
+
+def _deepseek_json(system_prompt: str, user_prompt: str) -> dict:
+    try:
+        resp = deepseek_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.3,
+            response_format={"type": "json_object"},
+        )
+        content = resp.choices[0].message.content or "{}"
+        return json.loads(content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DeepSeek(JSON) 调用失败: {e}")
 
 @app.get("/")
 def home():
@@ -164,6 +213,92 @@ def chat(request: ChatRequest):
             "intent": random.choice(["追问细节", "验证取舍", "考察边界", "工程化能力"]),
         },
     }
+
+@app.post("/api/virtual-career/questions")
+def virtual_career_questions(req: VirtualCareerQuestionsRequest):
+    """
+    根据职业名称动态生成 15 道匹配度选择题（每题 4 个选项）
+    """
+    system_prompt = (
+        "你是一名职业规划评估题目设计专家。"
+        "请针对指定职业设计 15 道用于评估匹配度的单选题，每题 4 个选项。"
+        "题目要尽量贴近真实工作场景，覆盖能力要求、工作方式偏好、压力/节奏、沟通协作等维度。\n"
+        "必须严格按照以下 JSON 结构返回：\n"
+        "{\n"
+        '  \"career\": \"职业名称\",\n'
+        '  \"questions\": [\n'
+        "    {\"id\": \"q1\", \"title\": \"题目 1 文本\", \"options\": [\"选项A\", \"选项B\", \"选项C\", \"选项D\"]},\n"
+        "    ... 共 15 道题 ...\n"
+        "  ]\n"
+        "}"
+    )
+    user_prompt = (
+        "目标职业名称：\n"
+        f"{req.career}\n\n"
+        "如果这是一个非常冷门或未见过的职业，请先用 1-2 句话理解/假设这个职业的核心工作内容，"
+        "然后基于你的理解设计题目。"
+    )
+    data = _deepseek_json(system_prompt, user_prompt)
+    questions = data.get("questions") or []
+    if not isinstance(questions, list) or len(questions) == 0:
+        raise HTTPException(status_code=500, detail="AI 生成题目失败，请稍后重试")
+    for idx, q in enumerate(questions, start=1):
+        q.setdefault("id", f"q{idx}")
+    return {
+        "career": data.get("career", req.career),
+        "questions": questions[:15],
+    }
+
+@app.post("/api/analyze-experiment")
+def analyze_experiment(req: AnalyzeExperimentRequest):
+    target_career = req.career or "未指定（请根据答题推断最匹配的方向）"
+    system_prompt = (
+        "你是一位资深生涯规划师与组织心理学顾问。"
+        "用户针对某一职业完成了 15 道匹配度选择题（每题 4 个选项）。"
+        "请为该用户生成一份围绕“目标职业匹配度”的 Markdown 报告，包含：\n"
+        "1) 职业画像与动机分析（3-6 条要点）\n"
+        "2) 与目标职业的整体匹配度评级（例如：高度匹配/基本匹配/需谨慎）\n"
+        "3) 关键优势/潜在风险点（各 3-5 条，结合答题内容给证据）\n"
+        "4) 若坚持该职业的 4 周行动建议（按周分解）\n"
+        "5) 若不适合该职业，建议的备选职业方向（至少 3 个，并解释理由）\n"
+        "要求：只输出 Markdown，不要输出 JSON。"
+    )
+    user_prompt = (
+        f"目标职业：{target_career}\n\n"
+        "以下是用户的作答（字典形式，key 为题号，value 为选项文本）：\n"
+        f"{json.dumps(req.answers, ensure_ascii=False, indent=2)}\n"
+        "请围绕此目标职业，生成一份匹配度分析报告。"
+    )
+    markdown = _deepseek_markdown(system_prompt, user_prompt)
+    return {"success": True, "markdown": markdown}
+
+@app.post("/api/generate-career")
+def generate_career(req: GenerateCareerRequest):
+    system_prompt = (
+        "你是一位资深生涯规划师。你将整合两份输入：\n"
+        "- 性格测试结果（JSON：可能含截图/自述/字段）\n"
+        "- 虚拟实验倾向分析（Markdown）\n"
+        "请输出一份最终的生涯规划 Markdown 报告，包含：\n"
+        "1) 个人画像（性格/动机/工作方式偏好）\n"
+        "2) 目标职业方向建议（3 个主方向 + 3 个备选方向）\n"
+        "3) 方向匹配理由（用证据对齐：来自性格测试与虚拟实验）\n"
+        "4) 能力差距清单（按：基础/项目/软技能/行业认知）\n"
+        "5) 12 周成长路线图（按周分解，每周 3-6 个任务）\n"
+        "6) 作品集/项目建议（至少 3 个可落地项目，写清楚产出物）\n"
+        "7) 简历与面试策略（关键词、故事线、STAR/项目讲法）\n"
+        "要求：只输出 Markdown，不要输出 JSON。"
+    )
+    user_prompt = (
+        "【性格测试 JSON】\n"
+        f"{json.dumps(req.personality_json, ensure_ascii=False, indent=2)}\n\n"
+        "【虚拟实验 Markdown】\n"
+        f"{req.experiment_markdown}\n\n"
+        "【用户补充说明（可为空）】\n"
+        f"{req.note or ''}\n\n"
+        "请输出最终的生涯规划 Markdown 报告。"
+    )
+    markdown = _deepseek_markdown(system_prompt, user_prompt)
+    return {"success": True, "markdown": markdown}
 
 # 👇 注意：这行必须顶格写，不能有空格！
 if __name__ == "__main__":

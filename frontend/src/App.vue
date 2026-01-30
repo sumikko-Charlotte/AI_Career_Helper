@@ -6,6 +6,8 @@ import { ref, reactive, computed, nextTick, watch, onMounted, onBeforeUnmount } 
 import axios from 'axios'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
+import html2canvas from 'html2canvas'
+import MarkdownIt from 'markdown-it'
 import {
   Monitor, ChatDotRound, DocumentChecked, User, Odometer, MagicStick,
   Calendar, SwitchButton, CircleCheck, Reading, Trophy, Loading, Compass, Aim,
@@ -20,12 +22,16 @@ import UserProfile from './components/UserProfile.vue'
 import { useRouter } from 'vue-router'
 import HistoryRecord from './components/HistoryRecord.vue'
 import ResumeTemplates from './components/ResumeTemplates.vue'
+import VirtualExperiment from './components/VirtualExperiment.vue'
+
+const md = new MarkdownIt()
 
 const router = useRouter()
 // ==========================================
 // 2. 核心变量定义 (State) - 放在最前防止报错
 // ==========================================
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
+console.debug('[App] API_BASE ->', API_BASE)
 const currentUser = ref(null)
 const activeMenu = ref('0')
 
@@ -54,6 +60,11 @@ const roadmapData = ref([])
 const roadmapRadar = ref(null)
 const roadmapComment = ref('')
 const radarChartRef = ref(null)
+const roadmapCaptureRef = ref(null)
+const personalityNote = ref('')
+const careerFiles = ref([])
+const careerGenerating = ref(false)
+const careerPlanMarkdown = ref('')
 
 // --- 简历医生变量 ---
 const resumeText = ref('')
@@ -494,6 +505,7 @@ const handleSelect = (key) => {
   activeMenu.value = key
   if (key === '3') nextTick(() => initSandboxChart())
   if (key === '1') nextTick(() => initResumeRadar())
+  if (key === '7') router.push('/virtual-experiment')
 }
 const handleLoginSuccess = (userData) => {
   currentUser.value = userData
@@ -514,6 +526,98 @@ onMounted(() => {
   if (activeMenu.value === '3') nextTick(() => initSandboxChart())
   fetchJobsData()
 })
+
+// ==========================================
+// 7. 生涯规划扩展：性格测试 & AI 整合报告
+// ==========================================
+const openPersonalityTest = () => {
+  window.open('https://www.16personalities.com/ch/%E4%BA%BA%E6%A0%BC%E6%B5%8B%E8%AF%95', '_blank')
+}
+
+const downloadPersonalityResult = async () => {
+  try {
+    const target = roadmapCaptureRef.value || document.body
+    const canvas = await html2canvas(target, { useCORS: true, backgroundColor: '#ffffff' })
+    const dataUrl = canvas.toDataURL('image/png')
+
+    const payload = {
+      type: 'personality_test_result',
+      source: '16personalities',
+      captured_at: new Date().toISOString(),
+      note: personalityNote.value || '',
+      screenshot_png_base64: dataUrl
+    }
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `性格测试结果_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('已导出 JSON')
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('导出失败：请确认页面可被截图（同源内容）')
+  }
+}
+
+const careerPlanHtml = computed(() => (careerPlanMarkdown.value ? md.render(careerPlanMarkdown.value) : ''))
+
+const readFileAsText = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = reject
+    reader.readAsText(file)
+  })
+
+const onCareerFilesChange = (_file, fileList) => {
+  careerFiles.value = fileList || []
+}
+
+const generateCareerPlan = async () => {
+  const raws = (careerFiles.value || []).map(f => f.raw).filter(Boolean)
+  const jsonFile = raws.find(f => (f.name || '').toLowerCase().endsWith('.json'))
+  const mdFile = raws.find(f => (f.name || '').toLowerCase().endsWith('.md'))
+
+  if (!jsonFile || !mdFile) {
+    return ElMessage.warning('请同时上传：性格测试 JSON + 虚拟实验 Markdown（.md）')
+  }
+
+  careerGenerating.value = true
+  careerPlanMarkdown.value = ''
+  try {
+    const jsonText = await readFileAsText(jsonFile)
+    const mdText = await readFileAsText(mdFile)
+    const personalityJson = JSON.parse(jsonText)
+
+    const res = await axios.post(`${API_BASE}/api/generate-career`, {
+      personality_json: personalityJson,
+      experiment_markdown: mdText,
+      note: personalityNote.value || ''
+    })
+
+    careerPlanMarkdown.value = res?.data?.markdown || ''
+    ElMessage.success('生涯规划报告已生成')
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('生成失败：请检查文件格式或后端服务')
+  } finally {
+    careerGenerating.value = false
+  }
+}
+
+const downloadCareerPlan = () => {
+  if (!careerPlanMarkdown.value) return ElMessage.warning('暂无规划报告可下载')
+  const blob = new Blob([careerPlanMarkdown.value], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `AI生涯规划报告_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.md`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 onBeforeUnmount(() => {
   if (resumeProgressTimer) clearInterval(resumeProgressTimer)
@@ -584,6 +688,11 @@ onBeforeUnmount(() => {
     <span>竞争力沙盘</span>
   </el-menu-item>
 
+  <el-menu-item index="7">
+    <el-icon><Reading /></el-icon>
+    <span>虚拟职业体验</span>
+  </el-menu-item>
+
   <el-menu-item index="5" @click="activeMenu = '5'">
   <el-icon><Clock /></el-icon>
   <span>历史记录</span>
@@ -629,6 +738,7 @@ onBeforeUnmount(() => {
     activeMenu === '1' ? 'AI 简历医生' :
     activeMenu === '2' ? '模拟面试' :
     activeMenu === '3' ? '竞争力沙盘' :
+    activeMenu === '7' ? '虚拟职业体验' :
     '个人中心'
   }}
 </div>
@@ -653,7 +763,7 @@ onBeforeUnmount(() => {
     <p>构建您的核心竞争力模型，规划最优职业路径</p>
   </div>
 
-  <div class="glass-card control-bar-pro">
+  <div class="glass-card control-bar-pro" ref="roadmapCaptureRef">
   <div class="control-left">
     <div class="control-title">
       <el-icon class="icon-pulse"><Compass /></el-icon>
@@ -663,6 +773,13 @@ onBeforeUnmount(() => {
   </div>
 
   <div class="control-right">
+    <el-button type="primary" plain size="large" @click="openPersonalityTest">
+      性格测试
+    </el-button>
+    <el-button type="success" plain size="large" @click="downloadPersonalityResult">
+      下载测试结果
+    </el-button>
+
     <el-select 
       v-model="roadmapGrade" 
       placeholder="当前年级" 
@@ -709,6 +826,39 @@ onBeforeUnmount(() => {
     </el-button>
   </div>
 </div>
+
+  <div class="glass-card" style="margin-top: 14px;">
+    <div class="card-title">🧩 AI 生涯分析整合</div>
+    <div style="display:flex; gap: 12px; align-items:center; flex-wrap: wrap;">
+      <el-input
+        v-model="personalityNote"
+        placeholder="可选：补充一段性格测试结果摘要/自我描述（会被一并用于生成规划）"
+        style="min-width: 360px; flex: 1;"
+      />
+
+      <el-upload
+        action="#"
+        :auto-upload="false"
+        :multiple="true"
+        :on-change="onCareerFilesChange"
+        :show-file-list="true"
+        accept=".json,.md"
+      >
+        <el-button type="primary" plain>导入分析文件</el-button>
+      </el-upload>
+
+      <el-button type="primary" :loading="careerGenerating" @click="generateCareerPlan">
+        {{ careerGenerating ? '生成中...' : '生成生涯规划报告' }}
+      </el-button>
+      <el-button type="success" plain :disabled="!careerPlanMarkdown" @click="downloadCareerPlan">
+        下载规划报告
+      </el-button>
+    </div>
+
+    <el-divider />
+    <div v-if="careerPlanMarkdown" class="markdown-body" v-html="careerPlanHtml"></div>
+    <div v-else style="color:#909399;">提示：请上传「性格测试 JSON」与「虚拟实验 .md」后生成报告。</div>
+  </div>
 
   <div v-if="roadmapData.length > 0">
     <el-row :gutter="24">
@@ -772,6 +922,11 @@ onBeforeUnmount(() => {
 <div v-if="activeMenu === '1'" class="animate-fade">
   <ResumeDoctor />
 </div>
+
+          <!-- 功能 7：虚拟实验体验 -->
+          <div v-if="activeMenu === '7'" class="animate-fade">
+            <VirtualExperiment />
+          </div>
           <!-- 功能 2：模拟面试 -->
           <div v-if="activeMenu === '2'" class="animate-fade">
             <div class="page-header">

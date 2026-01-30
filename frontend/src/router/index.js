@@ -7,6 +7,7 @@ import Dashboard from '../views/admin/Dashboard.vue'
 import UserManage from '../views/admin/UserManage.vue'
 import PromptConfig from '../views/admin/PromptConfig.vue'
 import ResumeTasks from '../views/admin/ResumeTasks.vue' 
+import VirtualExperiment from '../components/VirtualExperiment.vue'
 
 const routes = [
   {
@@ -23,6 +24,11 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: Login
+  },
+  {
+    path: '/virtual-experiment',
+    name: 'VirtualExperiment',
+    component: VirtualExperiment
   },
   {
     path: '/admin',
