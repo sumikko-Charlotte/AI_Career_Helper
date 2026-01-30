@@ -7,7 +7,11 @@ import Dashboard from '../views/admin/Dashboard.vue'
 import UserManage from '../views/admin/UserManage.vue'
 import PromptConfig from '../views/admin/PromptConfig.vue'
 import ResumeTasks from '../views/admin/ResumeTasks.vue' 
+<<<<<<< HEAD
 import VirtualExperiment from '../components/VirtualExperiment.vue'
+=======
+import AdminProfile from '../views/admin/AdminProfile.vue'
+>>>>>>> 4fc314a0d80b7459ac24b9460b2803c49a0b2a2b
 
 const routes = [
   {
@@ -44,6 +48,7 @@ const routes = [
       { path: 'users', component: UserManage },
       { path: 'tasks', component: ResumeTasks },
       { path: 'prompts', component: PromptConfig },
+      { path: 'profile', component: AdminProfile },
     ]
   }
 ]

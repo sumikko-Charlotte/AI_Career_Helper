@@ -11,7 +11,11 @@ import json
 from typing import List
 import shutil # 👈 新增
 from fastapi.staticfiles import StaticFiles # 👈 新增
+<<<<<<< HEAD
 from openai import OpenAI
+=======
+import json
+>>>>>>> 4fc314a0d80b7459ac24b9460b2803c49a0b2a2b
 app = FastAPI()
 
 os.makedirs("static/avatars", exist_ok=True) # 自动创建文件夹
@@ -95,6 +99,18 @@ class ApplyRequest(BaseModel):
     job_name: str
     salary: str
 
+class AdminProfileModel(BaseModel):
+    username: str = "admin"
+    nickname: str = ""
+    role: str = ""
+    department: str = ""
+    email: str = ""
+    phone: str = ""
+    avatar: str = ""     # 存 Base64 字符串
+    lastLogin: str = ""
+    ip: str = ""
+    new_password: str = None # 接收新密码
+
 class GenerateResumeRequest(BaseModel):
     focus_direction: str = "通用"
     diagnosis: dict | None = None
@@ -133,22 +149,103 @@ class HistoryItem(BaseModel):
     score: int
     date: str
     status: str       # "已完成"
+# 1. 获取管理员信息 (GET)
+# ⚠️ 之前报错 404 就是因为这个函数可能没写对，或者缩进错了
+@app.get("/api/admin/profile")
+def get_admin_profile():
+    print("🔍 [DEBUG] 收到获取 Admin Profile 请求") # 调试日志
+    
+    file_path = "data/admin_profile.json"
+    
+    # 确保 data 目录存在
+    if not os.path.exists("data"):
+        os.makedirs("data")
+        
+    # 如果文件不存在，返回默认数据
+    if not os.path.exists(file_path):
+        print("⚠️ [DEBUG] JSON 文件不存在，返回默认值")
+        default_data = {
+            "username": "admin",
+            "nickname": "默认管理员",
+            "role": "Super Admin",
+            "department": "技术部",
+            "email": "admin@careerfly.com",
+            "phone": "13800000000",
+            "avatar": ""
+        }
+        # 写入文件
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(default_data, f, ensure_ascii=False, indent=2)
+        return {"success": True, "data": default_data}
+    
+    # 读取文件
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        print("✅ [DEBUG] 成功读取 JSON 数据")
+        return {"success": True, "data": data}
+    except Exception as e:
+        print(f"❌ [DEBUG] 读取失败: {e}")
+        return {"success": False, "message": "读取失败"}
+# 2. 更新管理员信息 (POST)
+@app.post("/api/admin/profile/update")
+def update_admin_profile(item: AdminProfileModel):
+    print(f"📝 [DEBUG] 收到更新请求: 昵称={item.nickname}, 密码更改={item.new_password}")
 
-# --- 2. 新增：添加历史记录接口 ---
-@app.post("/api/history/add")
-def add_history(item: HistoryItem):
-    file_path = "data/history.csv"
-    os.makedirs("data", exist_ok=True)
-    
-    # 写入 CSV
-    file_exists = os.path.exists(file_path)
-    with open(file_path, "a", encoding="utf-8-sig", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["username", "action_type", "title", "score", "date", "status"])
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(item.dict())
-    
-    return {"success": True, "message": "记录已保存"}
+    # --- A. 保存到 JSON (解决头像和昵称保存) ---
+    json_path = "data/admin_profile.json"
+    try:
+        # 使用 model_dump 替代 dict (修复 Pydantic 警告)
+        save_data = item.model_dump(exclude={"new_password"}) 
+        
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(save_data, f, ensure_ascii=False, indent=2)
+        print("✅ [DEBUG] JSON 文件保存成功")
+    except Exception as e:
+        print(f"❌ [DEBUG] JSON 保存失败: {e}")
+        return {"success": False, "message": f"JSON保存失败: {e}"}
+
+    # --- B. 同步密码到 CSV (解决登录密码不更新问题) ---
+    if item.new_password and len(item.new_password) >= 6:
+        csv_path = "data/users.csv"
+        
+        if not os.path.exists(csv_path):
+            print("❌ [DEBUG] CSV 文件不存在，无法同步密码")
+            return {"success": True, "message": "资料已保存，但用户数据库不存在，无法同步密码"}
+
+        try:
+            # 1. 读取所有数据到内存
+            rows = []
+            updated = False
+            fieldnames = []
+            
+            with open(csv_path, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                fieldnames = reader.fieldnames # 获取表头
+                
+                for row in reader:
+                    # 强力匹配：去除空格
+                    if row.get("username", "").strip() == "admin":
+                        print(f"🔄 [DEBUG] 找到 admin 用户，正在更新密码为: {item.new_password}")
+                        row["password"] = item.new_password
+                        updated = True
+                    rows.append(row)
+            
+            # 2. 只有真的改了才写回文件
+            if updated:
+                with open(csv_path, "w", encoding="utf-8", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(rows)
+                print("✅ [DEBUG] CSV 密码同步完成")
+            else:
+                print("⚠️ [DEBUG] 未在 CSV 中找到 admin 用户，密码未同步")
+
+        except Exception as e:
+            print(f"❌ [DEBUG] CSV 操作出错: {e}")
+            return {"success": False, "message": "CSV同步失败"}
+
+    return {"success": True, "message": "更新成功"}
 
 # --- 3. 新增：获取历史记录接口 ---
 @app.get("/api/history")
@@ -174,7 +271,7 @@ async def root():
 
 @app.post("/api/login")
 def login(request: LoginRequest):
-    users_file = "users.csv"
+    users_file = "data/users.csv"
     if not os.path.exists(users_file):
         # 如果文件不存在，直接返回一个模拟成功，方便测试
         return {"success": True, "message": "测试登录成功 (无数据库)", "user": {"username": request.username, "grade": "大三", "target_role": "算法工程师"}}
@@ -190,26 +287,50 @@ def login(request: LoginRequest):
                 }
     return {"success": False, "message": "用户名或密码错误"}
 
+# ==========================================
+# 🛑 替换 main.py 里的 register 函数
+# ==========================================
+
 @app.post("/api/register")
-def register(request: RegisterRequest):
-    users_file = "users.csv"
-    file_exists = os.path.exists(users_file)
+def register(req: RegisterRequest):
+    csv_path = "data/users.csv"
     
-    if file_exists:
-        with open(users_file, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for user in reader:
-                if user['username'] == request.username:
-                    return {"success": False, "message": "用户名已存在"}
+    # 1. 检查文件是否存在
+    if not os.path.exists(csv_path):
+        return {"success": False, "message": "数据库未初始化，请先联系管理员"}
 
-    with open(users_file, 'a', newline='', encoding='utf-8') as f:
-        fieldnames = ['username', 'password', 'grade', 'target_role']
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not file_exists:
+    # 2. 检查用户名是否已存在
+    users = []
+    with open(csv_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row["username"] == req.username:
+                return {"success": False, "message": "该用户名已被注册"}
+            users.append(row)
+    
+    # 3. 追加新用户
+    # 注意：这里把 req.grade 存入 CSV
+    new_user = {
+        "username": req.username,
+        "password": req.password,
+        "grade": req.grade,      # 这里如果是 '管理员'，下次登录就会被识别
+        "target_role": req.target_role
+    }
+    
+    try:
+        # 追加模式 'a' 不太安全（容易乱表头），建议用重写模式
+        users.append(new_user)
+        fieldnames = ["username", "password", "grade", "target_role"]
+        
+        with open(csv_path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
-        writer.writerow(request.dict())
-
-    return {"success": True, "message": "注册成功", "user": request.dict()}
+            writer.writerows(users)
+            
+        return {"success": True, "message": "注册成功"}
+    except Exception as e:
+        print(f"注册写入失败: {e}")
+        return {"success": False, "message": "注册写入失败"}
 
 # ==========================================
 #  核心功能 B: 职位推荐 (修复 404 错误)
@@ -389,7 +510,7 @@ class ChangePwdRequest(BaseModel):
 
 @app.post("/api/user/change_password")
 def change_password(req: ChangePwdRequest):
-    users_file = "users.csv"
+    users_file = "data/users.csv"
     rows = []
     updated = False
     
@@ -474,7 +595,82 @@ def generate_resume(req: GenerateResumeRequest):
 * 具备极强的 Debug 能力，善于在压力下快速定位并解决问题。
 """
     return {"success": True, "content": content.strip()}
+# ==========================================
+# 🎮 虚拟职业体验模块 (Career Simulation)
+# ==========================================
 
+# 1. 模拟剧本数据 (Mock Data)
+SIMULATION_SCRIPTS = {
+    "product_manager": {
+        "title": "产品经理的一天",
+        "desc": "体验从需求评审到上线发布的生死时速。",
+        "scenes": [
+            {
+                "id": 1,
+                "text": "早上9:30，你刚到公司，开发组长气冲冲地跑过来说：'昨天定的需求技术实现不了，必须砍掉！' 同时，运营那边催着要上线。你会怎么做？",
+                "options": [
+                    {"label": "坚持原需求，让开发想办法", "score_change": -10, "feedback": "开发组长拍了桌子，项目延期风险增加。"},
+                    {"label": "立刻砍掉功能，保上线", "score_change": 5, "feedback": "运营很不满，但至少能按时上线。"},
+                    {"label": "拉会协调，寻找替代方案", "score_change": 10, "feedback": "虽然花了一小时开会，但大家达成了共识，干得漂亮！"}
+                ]
+            },
+            {
+                "id": 2,
+                "text": "下午3:00，老板突然在群里发了一张竞品的截图，说：'这个功能很酷，我们要不要也加一个？' 此时距离封版只剩2小时。",
+                "options": [
+                    {"label": "老板说加就加！", "score_change": -20, "feedback": "开发全员炸锅，今晚通宵已成定局，士气低落。"},
+                    {"label": "私聊老板，说明风险，建议下个版本加", "score_change": 10, "feedback": "老板觉得你考虑周全，同意了你的建议。"},
+                    {"label": "装作没看见", "score_change": -5, "feedback": "老板在群里@了你，场面一度十分尴尬。"}
+                ]
+            }
+        ]
+    },
+    "programmer": {
+        "title": "全栈工程师的一天",
+        "desc": "体验代码、Bug与产品经理之间的爱恨情仇。",
+        "scenes": [
+            {
+                "id": 1,
+                "text": "上午10:00，你正在写核心代码，产品经理突然跑过来说：'这个按钮的颜色能不能换成五彩斑斓的黑？' 你被打断了思路。",
+                "options": [
+                    {"label": "直接怼回去：'你行你上！'", "score_change": -10, "feedback": "产品经理哭着去找老板了，你被HR约谈。"},
+                    {"label": "耐心解释技术实现难度", "score_change": 10, "feedback": "产品经理被你的专业术语绕晕了，放弃了修改。"},
+                    {"label": "默默记下，先写完手头代码", "score_change": 5, "feedback": "稳妥的做法，但需求还是得改。"}
+                ]
+            },
+            {
+                "id": 2,
+                "text": "下午5:50，准备下班去约会。测试突然提了一个 '严重' 级别的Bug，说是偶发性的，复现不出来。",
+                "options": [
+                    {"label": "不管了，先下班", "score_change": -15, "feedback": "线上炸了，你在约会途中被叫回公司修通宵。"},
+                    {"label": "留下来排查，推迟约会", "score_change": 10, "feedback": "查出了是缓存问题，半小时搞定，不仅没迟到还收获了测试的崇拜。"},
+                    {"label": "告诉测试：'我本地是好的'", "score_change": -5, "feedback": "经典的程序员语录，但问题依然存在。"}
+                ]
+            }
+        ]
+    }
+}
+
+class SimulationRequest(BaseModel):
+    role_id: str
+
+# 2. 获取剧本接口
+@app.post("/api/simulation/start")
+def start_simulation(req: SimulationRequest):
+    role = req.role_id
+    if role not in SIMULATION_SCRIPTS:
+        return {"success": False, "message": "剧本不存在"}
+    
+    script = SIMULATION_SCRIPTS[role]
+    return {
+        "success": True, 
+        "data": {
+            "title": script["title"],
+            "scenes": script["scenes"] # 一次性把简单剧本都给前端，前端自己控制进度
+        }
+    }
+
+<<<<<<< HEAD
 
 # ==========================================
 #  新增功能 G: 虚拟职业体验 & 生涯分析整合
@@ -587,3 +783,8 @@ def generate_career(req: GenerateCareerRequest):
 # ==========================================
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8001)
+=======
+if __name__ == "__main__":
+    print("🚀 服务器启动中...")
+    uvicorn.run(app, host="127.0.0.1", port=8000)
+>>>>>>> 4fc314a0d80b7459ac24b9460b2803c49a0b2a2b

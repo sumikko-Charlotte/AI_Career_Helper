@@ -22,9 +22,13 @@ import UserProfile from './components/UserProfile.vue'
 import { useRouter } from 'vue-router'
 import HistoryRecord from './components/HistoryRecord.vue'
 import ResumeTemplates from './components/ResumeTemplates.vue'
+<<<<<<< HEAD
 import VirtualExperiment from './components/VirtualExperiment.vue'
 
 const md = new MarkdownIt()
+=======
+import CareerExperience from './components/CareerExperience.vue' 
+>>>>>>> 4fc314a0d80b7459ac24b9460b2803c49a0b2a2b
 
 const router = useRouter()
 // ==========================================
@@ -111,6 +115,11 @@ const roleOptions = [
   { label: '政府/非盈利机构/其他', options: ['公共事业', '农业', '林业', '牧业', '渔业', '政府'] }
 ]
 
+// 新增：职业测评跳转方法（适配script setup）
+const jumpToAssessment = () => {
+  // 替换为你的测评页面实际URL
+  window.open('https://minke8.cn/gd7.html', '_blank')
+}
 // ==========================================
 // 3. 语音功能 (TTS & STT) - 核心新增
 // ==========================================
@@ -689,9 +698,15 @@ onBeforeUnmount(() => {
   </el-menu-item>
 
   <el-menu-item index="7">
+<<<<<<< HEAD
     <el-icon><Reading /></el-icon>
     <span>虚拟职业体验</span>
   </el-menu-item>
+=======
+  <el-icon><VideoPlay /></el-icon>
+  <span>虚拟职业体验</span>
+</el-menu-item>
+>>>>>>> 4fc314a0d80b7459ac24b9460b2803c49a0b2a2b
 
   <el-menu-item index="5" @click="activeMenu = '5'">
   <el-icon><Clock /></el-icon>
@@ -702,6 +717,7 @@ onBeforeUnmount(() => {
   <el-icon><User /></el-icon>
   <span>个人中心</span>
 </el-menu-item>
+
 </el-menu>
   
 
@@ -813,6 +829,17 @@ onBeforeUnmount(() => {
         />
       </el-option-group>
     </el-select>
+
+    <!-- 新增：职业测评按钮 -->
+    <el-button 
+      type="success" 
+      size="large" 
+      class="assessment-btn"
+      @click="jumpToAssessment"
+      round
+    >
+      职业测评 <el-icon class="el-icon--right"><UserFilled /></el-icon>
+    </el-button>
 
     <el-button 
       type="primary" 
@@ -1110,6 +1137,10 @@ onBeforeUnmount(() => {
           <!-- 功能 6：简历模板库 --> 
 <div v-if="activeMenu === '6'" style="height: 100%">
   <ResumeTemplates />
+</div>
+          <!-- 功能 7：虚拟职业体验 --> 
+<div v-if="activeMenu === '7'" class="content-wrapper">
+  <CareerExperience />
 </div>
           </el-main>
       </el-container>
@@ -1840,3 +1871,16 @@ onBeforeUnmount(() => {
   50% { transform: scale(1.2); opacity: 0.6; }
   100% { transform: scale(1); opacity: 1; }
 }
+/* 新增按钮的样式适配，保证间距美观 */
+.assessment-btn {
+  margin-right: 12px; /* 和生成按钮保持间距，与现有布局一致 */
+  transition: all 0.2s ease;
+}
+
+.assessment-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.15);
+}
+
+/* 保持原有样式不变 */
+/* ... 你的其他样式 ... */
