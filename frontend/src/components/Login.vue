@@ -1,9 +1,10 @@
 <script setup>
 import { ref, onMounted } from 'vue' // Removed computed as we will bind directly
 import axios from 'axios'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 
-const router = useRouter() 
+const router = useRouter()
+const route = useRoute()
 const emit = defineEmits(['login-success'])
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
 console.debug('[Login] API_BASE ->', API_BASE)
@@ -112,8 +113,9 @@ const handleLogin = async () => {
           console.log('👑 检测到管理员身份，跳转后台')
           await router.push('/admin/dashboard')
       } else {
-          // 普通用户
+          // 普通用户：登录成功后自动跳转到过渡导航页（第3页）
           emit('login-success', user)
+          await router.push('/explore')
       }
 
     } else {
@@ -166,6 +168,11 @@ const handleSubmit = () => {
 </script>
 
 <template>
+ <!-- 登录页左上角 关于我们 + 隐私政策 跳转代码 -->
+<div style="position: absolute; top: 20px; left: 20px; display: flex; gap: 25px; z-index: 999;">
+  <router-link to="/about-us" style="font-size: 14px; font-weight: 500; color: #409EFF;">关于我们</router-link>
+  <router-link to="/privacy-policy" style="font-size: 14px; font-weight: 500; color: #409EFF;">隐私政策</router-link>
+</div>
   <div class="login-container">
     <div class="background-gradient"></div>
 

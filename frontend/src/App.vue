@@ -10,8 +10,8 @@ import html2canvas from 'html2canvas'
 import MarkdownIt from 'markdown-it'
 import {
   Monitor, ChatDotRound, DocumentChecked, User, Odometer, MagicStick,
-  Calendar, SwitchButton, CircleCheck, Reading, Trophy, Loading, Compass, Aim,
-  Microphone ,Clock,Collection
+  Calendar, SwitchButton, CircleCheck, VideoPlay, Trophy, Loading, Compass, Aim,
+  Microphone, Clock, Collection
 } from '@element-plus/icons-vue'
 
 // 引入组件
@@ -19,18 +19,15 @@ import Login from './components/Login.vue'
 import ResumeDoctor from './components/ResumeDoctor.vue'
 import DigitalHuman from './components/DigitalHuman.vue'
 import UserProfile from './components/UserProfile.vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import HistoryRecord from './components/HistoryRecord.vue'
 import ResumeTemplates from './components/ResumeTemplates.vue'
-<<<<<<< HEAD
 import VirtualExperiment from './components/VirtualExperiment.vue'
-
+import CareerExperience from './components/CareerExperience.vue'
 const md = new MarkdownIt()
-=======
-import CareerExperience from './components/CareerExperience.vue' 
->>>>>>> 4fc314a0d80b7459ac24b9460b2803c49a0b2a2b
 
 const router = useRouter()
+const route = useRoute()
 // ==========================================
 // 2. 核心变量定义 (State) - 放在最前防止报错
 // ==========================================
@@ -38,6 +35,19 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
 console.debug('[App] API_BASE ->', API_BASE)
 const currentUser = ref(null)
 const activeMenu = ref('0')
+
+// 如果路由携带 focus 参数（例如来自 /explore 的跳转），则将主界面聚焦到对应功能
+onMounted(() => {
+  const f = route.query.focus
+  if (f) {
+    activeMenu.value = String(f)
+    // 清理一次性参数（可选）
+    router.replace({ path: route.path, query: {} }).catch(() => {})
+  }
+})
+
+// 顶部导航行为：直接跳转到探索引导页
+const goExplore = () => router.push('/explore')
 
 // --- 语音模块变量 (新增) ---
 const isRecording = ref(false)
@@ -520,7 +530,6 @@ const handleLoginSuccess = (userData) => {
   currentUser.value = userData
   ElMessage.success(`欢迎回来，${userData.username}！`)
 }
-router.push('/')
 const handleLogout = () => {
   currentUser.value = null
   ElMessage.info('已退出登录')
@@ -642,6 +651,7 @@ onBeforeUnmount(() => {
 </script>
   
 <template>
+  <!-- 未登录状态：显示首页、登录页等 -->
   <div v-if="!currentUser" class="guest-container">
     <router-view @login-success="handleLoginSuccess" />
     
@@ -651,6 +661,13 @@ onBeforeUnmount(() => {
     />
   </div>
 
+  <!-- 已登录状态：如果是过渡页(/explore)，显示过渡页 -->
+  <div v-else-if="$route.path === '/explore'" class="guest-container">
+    <router-view />
+  </div>
+
+  <!-- 已登录状态：显示主应用界面（功能页） -->
+  <!-- 当路由为 /app 或其他功能相关路由时，显示主应用界面 -->
   <el-container v-else class="app-shell">
 
     <el-aside width="260px" class="app-aside">
@@ -660,6 +677,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="brand-text">
             <div class="brand-title">职航——AI辅助的大学生生涯成长平台</div>
+            <button class="explore-btn" @click="goExplore">探索</button>
             <div class="brand-subtitle">挑战杯 · 演示版 Demo</div>
           </div>
         </div>
@@ -698,15 +716,9 @@ onBeforeUnmount(() => {
   </el-menu-item>
 
   <el-menu-item index="7">
-<<<<<<< HEAD
-    <el-icon><Reading /></el-icon>
+    <el-icon><VideoPlay /></el-icon>
     <span>虚拟职业体验</span>
   </el-menu-item>
-=======
-  <el-icon><VideoPlay /></el-icon>
-  <span>虚拟职业体验</span>
-</el-menu-item>
->>>>>>> 4fc314a0d80b7459ac24b9460b2803c49a0b2a2b
 
   <el-menu-item index="5" @click="activeMenu = '5'">
   <el-icon><Clock /></el-icon>
@@ -1196,6 +1208,7 @@ onBeforeUnmount(() => {
   }
   
   .brand-title { font-weight: 700; letter-spacing: 0.5px; font-size: 14px; }
+.explore-btn { margin-left:12px; background: linear-gradient(90deg,#4A89DC 0%, #967ADC 100%); color: #fff; border: none; padding:6px 12px; border-radius:8px; cursor:pointer }
   .brand-subtitle { margin-top: 2px; font-size: 12px; color: rgba(255,255,255,0.56); }
   
   .side-menu { border-right: none; margin-top: 6px; background: transparent; }

@@ -11,11 +11,7 @@ import json
 from typing import List
 import shutil # 👈 新增
 from fastapi.staticfiles import StaticFiles # 👈 新增
-<<<<<<< HEAD
 from openai import OpenAI
-=======
-import json
->>>>>>> 4fc314a0d80b7459ac24b9460b2803c49a0b2a2b
 app = FastAPI()
 
 os.makedirs("static/avatars", exist_ok=True) # 自动创建文件夹
@@ -670,8 +666,6 @@ def start_simulation(req: SimulationRequest):
         }
     }
 
-<<<<<<< HEAD
-
 # ==========================================
 #  新增功能 G: 虚拟职业体验 & 生涯分析整合
 # ==========================================
@@ -782,9 +776,5 @@ def generate_career(req: GenerateCareerRequest):
 #  启动入口
 # ==========================================
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8001)
-=======
-if __name__ == "__main__":
     print("🚀 服务器启动中...")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
->>>>>>> 4fc314a0d80b7459ac24b9460b2803c49a0b2a2b
+    uvicorn.run(app, host="127.0.0.1", port=8001)

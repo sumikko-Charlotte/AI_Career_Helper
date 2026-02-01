@@ -4,8 +4,8 @@
       <div class="sidebar">
         <div class="logo">LOGO</div>
         <div class="menu">
-          <div class="menu-item">关于我们</div>
-          <div class="menu-item">隐私政策</div>
+          <div class="menu-item" @click="goToAboutUs">关于我们</div>
+          <div class="menu-item" @click="goToPrivacyPolicy">隐私政策</div>
         </div>
       </div>
   
@@ -22,17 +22,17 @@
   import { useRouter } from 'vue-router'
   
   const router = useRouter()
+  // 修改：点击「开始探索」按钮，直接跳转到登录页
   const goToRegister = () => {
-  // ❌ 之前的代码可能是 router.push('/register') ->这是错的，因为你没有注册页
-  
-  // ✅ 请改成跳转到登录页
-  router.push('/login') 
-}
-  
-  // 可选：自动跳转（比如3秒后自动跳转到注册页）
-  // setTimeout(() => {
-  //   router.push('/register')
-  // }, 3000)
+    router.push('/login')
+  }
+  // 保留原有功能：关于我们和隐私政策跳转
+  const goToAboutUs = () => {
+    router.push('/about-us')
+  }
+  const goToPrivacyPolicy = () => {
+    router.push('/privacy-policy')
+  }
   </script>
   
   <style scoped>
