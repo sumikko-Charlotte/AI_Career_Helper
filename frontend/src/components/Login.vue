@@ -7,7 +7,8 @@ const router = useRouter()
 const route = useRoute()
 const emit = defineEmits(['login-success'])
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
-console.debug('[Login] API_BASE ->', API_BASE)
+const SERVER_API = import.meta.env.VITE_USER_SERVER || 'http://127.0.0.1:3000' // 新增：用户持久化服务
+console.debug('[Login] API_BASE ->', API_BASE, 'SERVER_API ->', SERVER_API)
 
 // 响应式数据
 const isLogin = ref(true) 
@@ -106,6 +107,15 @@ const handleLogin = async () => {
         localStorage.removeItem('remembered_username')
       }
 
+      // 同步到真实用户服务（用于持久化 CSV）
+      try {
+        const syncResp = await axios.post(`${SERVER_API}/api/login`, { username: loginForm.value.username, password: loginForm.value.password })
+        if (!(syncResp.data && syncResp.data.code === 200)) {
+          // 如果该用户在真实 CSV 中不存在，则尝试注册一次以保证持久化
+          await axios.post(`${SERVER_API}/api/register`, { username: loginForm.value.username, password: loginForm.value.password })
+        }
+      } catch (e) { console.warn('同步登录到用户服务失败', e) }
+
       alert('登录成功！')
       
       // 🟢 关键修复点 2：现在 user 变量存在了，判断就不会报错了
@@ -146,6 +156,10 @@ const handleRegister = async () => {
       alert('注册成功！请登录')
       isLogin.value = true 
       loginForm.value.username = registerForm.value.username 
+      // 同步到真实用户服务，持久化到 CSV
+      try {
+        await axios.post(`${SERVER_API}/api/register`, registerForm.value)
+      } catch (e) { console.warn('同步注册到用户服务失败', e) }
       registerForm.value = { username: '', password: '', grade: '', target_role: '' }
     } else {
       alert(response.data.message)

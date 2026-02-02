@@ -37,13 +37,25 @@ const currentUser = ref(null)
 const activeMenu = ref('0')
 
 // 如果路由携带 focus 参数（例如来自 /explore 的跳转），则将主界面聚焦到对应功能
+// 处理来自 /explore 的一次性聚焦参数（可在首次加载或运行时实时响应）
+const applyFocus = (f) => {
+  if (!f) return
+  activeMenu.value = String(f)
+  // 和 handleSelect 中的行为保持一致：按需初始化对应模块
+  if (String(f) === '3') nextTick(() => initSandboxChart())
+  if (String(f) === '1') nextTick(() => initResumeRadar())
+  if (String(f) === '7') router.push('/virtual-experiment').catch(() => {})
+  // 处理一次性参数后清理，避免影响后续路由判断
+  router.replace({ path: route.path, query: {} }).catch(() => {})
+}
+
 onMounted(() => {
-  const f = route.query.focus
-  if (f) {
-    activeMenu.value = String(f)
-    // 清理一次性参数（可选）
-    router.replace({ path: route.path, query: {} }).catch(() => {})
-  }
+  applyFocus(route.query.focus)
+})
+
+// 监听路由 query 中 focus 的变化（例如从 /explore push 到 /app?focus=2），并在运行时响应
+watch(() => route.query.focus, (f) => {
+  applyFocus(f)
 })
 
 // 顶部导航行为：直接跳转到探索引导页
@@ -274,7 +286,11 @@ const sendMessage = async () => {
 
   try {
     chatSending.value = true
-    const res = await axios.post(`${API_BASE}/api/chat`, { message: userMsg })
+    // 可选：为模拟面试场景注入 Admin 配置的提示词（localStorage ）
+    const defaultInterviewPrompt = `你是一个严厉但公正的技术面试官。请根据用户的求职意向（如Java后端），提出有深度的技术问题。\n每次只问一个问题，并在用户回答后进行追问。不要一次性抛出太多问题。`
+    const interviewPrompt = localStorage.getItem('admin_ai_interview') || defaultInterviewPrompt
+
+    const res = await axios.post(`${API_BASE}/api/chat`, { message: userMsg, system_prompt: interviewPrompt })
     let reply = res.data?.reply || res.data?.reply_text || '（未返回内容）'
 
     if (jobsData.value.length > 0 && Math.random() > 0.5) { 
@@ -595,6 +611,17 @@ const onCareerFilesChange = (_file, fileList) => {
 }
 
 const generateCareerPlan = async () => {
+  // 禁用用户检查
+  try {
+    const banned = JSON.parse(localStorage.getItem('competition_banned_user_ids') || '[]')
+    const username = localStorage.getItem('remembered_username') || ''
+    const users = JSON.parse(localStorage.getItem('competition_user_list') || '[]')
+    const me = users.find(u => u.username === username)
+    if (me && banned.includes(me.id)) {
+      return ElMessage.error('您的账号已被管理员禁用，无法使用该功能')
+    }
+  } catch (e) {}
+
   const raws = (careerFiles.value || []).map(f => f.raw).filter(Boolean)
   const jsonFile = raws.find(f => (f.name || '').toLowerCase().endsWith('.json'))
   const mdFile = raws.find(f => (f.name || '').toLowerCase().endsWith('.md'))
@@ -610,10 +637,14 @@ const generateCareerPlan = async () => {
     const mdText = await readFileAsText(mdFile)
     const personalityJson = JSON.parse(jsonText)
 
+    const defaultCareerPlanPrompt = `你是一个资深的大学生职业规划导师。请根据学生的年级和专业，为他规划一条清晰的学习路线图。\n请列出具体的学习阶段、推荐书籍和关键项目。`
+    const careerPrompt = localStorage.getItem('admin_ai_career_plan') || defaultCareerPlanPrompt
+
     const res = await axios.post(`${API_BASE}/api/generate-career`, {
       personality_json: personalityJson,
       experiment_markdown: mdText,
-      note: personalityNote.value || ''
+      note: personalityNote.value || '',
+      system_prompt: careerPrompt
     })
 
     careerPlanMarkdown.value = res?.data?.markdown || ''

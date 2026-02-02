@@ -7,6 +7,7 @@ import Dashboard from '../views/admin/Dashboard.vue'
 import UserManage from '../views/admin/UserManage.vue'
 import PromptConfig from '../views/admin/PromptConfig.vue'
 import ResumeTasks from '../views/admin/ResumeTasks.vue' 
+import AdminGuide from '../views/admin/AdminGuide.vue'
 import VirtualExperiment from '../components/VirtualExperiment.vue'
 import AdminProfile from '../views/admin/AdminProfile.vue'
 import ExploreGuide from '../views/ExploreGuide.vue'
@@ -72,10 +73,15 @@ const routes = [
       next()
     },
     children: [
+      { path: 'guide', component: AdminGuide },
       { path: 'dashboard', component: Dashboard },
       { path: 'users', component: UserManage },
+      // 兼容友好别名（保留旧风格路径）
+      { path: 'user-management', redirect: '/admin/users' },
       { path: 'tasks', component: ResumeTasks },
+      { path: 'resume-tasks', redirect: '/admin/tasks' },
       { path: 'prompts', component: PromptConfig },
+      { path: 'prompt-config', redirect: '/admin/prompts' },
       { path: 'profile', component: AdminProfile },
     ]
   }

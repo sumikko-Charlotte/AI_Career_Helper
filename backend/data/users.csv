@@ -1,3 +1,12 @@
-username,password,grade,target_role
-test,test123,大三,Java开发工程师
-admin,admin123,管理员,系统管理
+username,password,grade,target_role,createTaskNum,uploadedResumeNum
+alice,alice123,大三,前端,0,0
+bob,bob123,大三,后端,0,0
+carol,carol123,大四,算法,0,0
+dave,dave123,大三,全栈,0,0
+eve,eve123,大二,测试,0,0
+frank,frank123,大三,前端,0,0
+grace,grace123,大四,后端,0,0
+heidi,heidi123,大三,算法,0,0
+ivan,ivan123,大二,全栈,0,0
+judy,judy123,大三,测试,0,0
+admin,admin123,管理员,系统管理,0,0

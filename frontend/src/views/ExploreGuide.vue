@@ -125,31 +125,33 @@ const navTo = (key) => {
   // 统一跳转策略：如果功能有独立路由就直接 push；否则 push 到功能页(/app)并携带 focus 查询参数，App.vue 会处理
   switch (key) {
     case 'roadmap':
-      router.push({ path: '/app', query: { focus: '0' } })
+      router.push({ path: '/app', query: { focus: '0' } }).catch(() => {})
       break
     case 'virtual':
-      router.push('/virtual-experiment')
+      // 使用 App 内部菜单索引聚焦（优先保证已登录时在主界面内切换）
+      router.push({ path: '/app', query: { focus: '7' } }).catch(() => {})
       break
     case 'templates':
-      router.push({ path: '/app', query: { focus: '6' } })
+      router.push({ path: '/app', query: { focus: '6' } }).catch(() => {})
       break
     case 'resume':
-      router.push({ path: '/app', query: { focus: '1' } })
+      router.push({ path: '/app', query: { focus: '1' } }).catch(() => {})
       break
     case 'sandbox':
-      router.push({ path: '/app', query: { focus: '3' } })
+      router.push({ path: '/app', query: { focus: '3' } }).catch(() => {})
       break
     case 'interview':
-      router.push({ path: '/app', query: { focus: '2' } })
+      router.push({ path: '/app', query: { focus: '2' } }).catch(() => {})
       break
     case 'history':
-      router.push('/history')
+      // 在主应用内聚焦到历史记录菜单（兼容已登录场景）
+      router.push({ path: '/app', query: { focus: '5' } }).catch(() => {})
       break
     case 'profile':
-      router.push({ path: '/app', query: { focus: '4' } })
+      router.push({ path: '/app', query: { focus: '4' } }).catch(() => {})
       break
     default:
-      router.push('/app')
+      router.push('/app').catch(() => {})
   }
 }
 </script>

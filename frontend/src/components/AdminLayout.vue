@@ -62,6 +62,10 @@ onUnmounted(() => {
   active-text-color="#EFE3B2"
   class="custom-menu"
 >
+  <el-menu-item index="/admin/guide">
+    <el-icon><Monitor /></el-icon><span>功能引导</span>
+  </el-menu-item>
+
   <el-menu-item index="/admin/dashboard">
     <el-icon><DataLine /></el-icon><span>数据大屏</span>
   </el-menu-item>

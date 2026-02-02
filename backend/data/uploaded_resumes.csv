@@ -1,0 +1,10 @@
+﻿task_id,username,filename,report,score,date
+T-MOCK-01,alice,alice_resume.pdf,"# 模拟报告
+- 分数：88
+- 建议：突出项目",88,2026-02-02 18:48:46
+T-MOCK-02,bob,bob_resume.pdf,"# 模拟报告
+- 分数：76
+- 建议：补充实习",76,2026-02-02 18:48:46
+T-MOCK-03,carol,carol_resume.pdf,"# 模拟报告
+- 分数：92
+- 建议：保持精炼",92,2026-02-02 18:48:46

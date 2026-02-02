@@ -1,0 +1,16 @@
+{
+  "name": "ai_project_user_server",
+  "version": "1.0.0",
+  "description": "Simple CSV-backed user server for AI Project tests",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "csv-parser": "^3.0.0",
+    "express": "^4.18.2",
+    "fast-csv": "^4.3.6",
+    "body-parser": "^1.20.2"
+  }
+}

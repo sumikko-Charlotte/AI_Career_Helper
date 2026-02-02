@@ -180,6 +180,17 @@ const allAnswered = computed(
 // - Verified backend route exists and expects { career: string } in POST body
 // - Improved error handling: distinguishes network errors, 404 and 5xx; shows friendly messages
 const loadQuestions = async (careerName) => {
+  // 禁用用户检查
+  try {
+    const banned = JSON.parse(localStorage.getItem('competition_banned_user_ids') || '[]')
+    const username = localStorage.getItem('remembered_username') || ''
+    const users = JSON.parse(localStorage.getItem('competition_user_list') || '[]')
+    const me = users.find(u => u.username === username)
+    if (me && banned.includes(me.id)) {
+      return ElMessage.error('您的账号已被管理员禁用，无法使用该功能')
+    }
+  } catch (e) {}
+
   currentCareer.value = careerName
   loadingCareer.value = careerName
   markdownRaw.value = ''
@@ -187,8 +198,12 @@ const loadQuestions = async (careerName) => {
     // 强制使用后端实际运行地址（确保不会被错配到其他端口）
     const url = 'http://127.0.0.1:8001/api/virtual-career/questions'
     console.debug('[VirtualExperiment] POST (hardcoded)', url, { career: careerName })
-    // 请求方法：POST（后端定义为 POST /api/virtual-career/questions，body: { career })
-    const res = await axios.post(url, { career: careerName })
+    // 从 Admin 配置读取系统提示词（localStorage），key: admin_ai_virtual_career
+    const defaultVirtualPrompt = `你是一个沉浸式体验脚本生成器。根据用户选择的职业（例如“产品经理”），生成一套 15 道情景模拟题目，覆盖真实工作场景，句式简洁明了，便于用户做出选择题回答。每题给出 3 个选项。`
+    const virtualPrompt = localStorage.getItem('admin_ai_virtual_career') || defaultVirtualPrompt
+
+    // 请求方法：POST（后端定义为 POST /api/virtual-career/questions，body: { career, system_prompt })
+    const res = await axios.post(url, { career: careerName, system_prompt: virtualPrompt })
     console.debug('[VirtualExperiment] RESPONSE', res.status, res.data)
 
     // 如果后端成功返回但题目为空，保持友好提示
@@ -219,6 +234,17 @@ const loadQuestions = async (careerName) => {
 }
 
 const submitAnswers = async () => {
+  // 禁用用户检查
+  try {
+    const banned = JSON.parse(localStorage.getItem('competition_banned_user_ids') || '[]')
+    const username = localStorage.getItem('remembered_username') || ''
+    const users = JSON.parse(localStorage.getItem('competition_user_list') || '[]')
+    const me = users.find(u => u.username === username)
+    if (me && banned.includes(me.id)) {
+      return ElMessage.error('您的账号已被管理员禁用，无法使用该功能')
+    }
+  } catch (e) {}
+
   if (!currentCareer.value) return ElMessage.warning('请先选择一个想体验的职业')
   if (!allAnswered.value) return ElMessage.warning('请先完成 15 题再提交')
   submitting.value = true
@@ -226,9 +252,14 @@ const submitAnswers = async () => {
   try {
     const url = `${API_BASE}/api/analyze-experiment`
     console.debug('[VirtualExperiment] POST', url, { answers: answers.value, career: currentCareer.value })
+    // 附带虚拟体验的系统提示词（localStorage）
+    const defaultVirtualPrompt = `你是一个沉浸式体验脚本生成器。根据用户选择的职业（例如“产品经理”），生成一套 15 道情景模拟题目，覆盖真实工作场景，句式简洁明了，便于用户做出选择题回答。每题给出 3 个选项。`
+    const virtualPrompt = localStorage.getItem('admin_ai_virtual_career') || defaultVirtualPrompt
+
     const res = await axios.post(url, {
       answers: answers.value,
-      career: currentCareer.value
+      career: currentCareer.value,
+      system_prompt: virtualPrompt
     })
     console.debug('[VirtualExperiment] RESPONSE', res.status, res.data)
     markdownRaw.value = res?.data?.markdown || ''
@@ -402,7 +433,7 @@ const downloadMd = () => {
 
 .career-icon { margin-top: 6px; margin-bottom: 12px; display: flex; align-items: center; justify-content: center; }
 .career-name { font-weight: 700; margin-bottom: 6px; font-size: 16px; color: #0f172a; }
-.career-desc { font-size: 13px; color: #9ca3af; min-height: 40px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.career-desc { font-size: 13px; color: #9ca3af; min-height: 40px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-clamp: 2; }
 
 .card-footer { width: 100%; display: flex; justify-content: center; }
 .career-btn {

@@ -579,8 +579,8 @@ def generate_resume(req: GenerateResumeRequest):
 * **背景 (S)**：针对大学生求职痛点，开发智能辅助系统。
 * **任务 (T)**：负责从 0 到 1 搭建前后端分离架构。
 * **行动 (A)**：
-    * **架构设计**：基于 **FastAPI** 重构接口，修复了“404 Not Found”的关键 Bug。
-    * **体验优化**：前端采用 **Vue3** 实现“双屏联动”，效率提升 **50%**。
+    * **架构设计**：基于 **FastAPI** 重构接口，修复了“404 Not Found"的关键 Bug。
+    * **体验优化**：前端采用 **Vue3** 实现“双屏联动”，效率提升 **50%"。
 * **结果 (R)**：项目上线首周获得 200+ 次调用。
 
 ## 🛠 技能清单
@@ -591,6 +591,183 @@ def generate_resume(req: GenerateResumeRequest):
 * 具备极强的 Debug 能力，善于在压力下快速定位并解决问题。
 """
     return {"success": True, "content": content.strip()}
+
+
+# ===================== 新增：简历上传相关接口 =====================
+class ResumeUploadRequest(BaseModel):
+    username: str
+    task_id: str
+    filename: str
+    report: str
+    score: float | int = 0
+    date: str | None = None
+
+
+@app.post('/api/resume/upload')
+def upload_resume(item: ResumeUploadRequest):
+    """接收前端上传的简历报告，持久化到 data/uploaded_resumes.csv 并更新 users.csv 的 uploadedResumeNum 字段"""
+    os.makedirs('data', exist_ok=True)
+    uploaded_file = 'data/uploaded_resumes.csv'
+    users_file = 'data/users.csv'
+
+    # 填充默认日期
+    if not item.date:
+        item.date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    # 1. 写入 uploaded_resumes.csv
+    fieldnames = ['task_id', 'username', 'filename', 'report', 'score', 'date']
+    exists = os.path.exists(uploaded_file)
+    try:
+        with open(uploaded_file, 'a', encoding='utf-8-sig', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            if not exists:
+                writer.writeheader()
+            writer.writerow({
+                'task_id': item.task_id,
+                'username': item.username,
+                'filename': item.filename,
+                'report': item.report,
+                'score': item.score,
+                'date': item.date,
+            })
+    except Exception as e:
+        return {'success': False, 'message': f'写入上传记录失败: {e}'}
+
+    # 2. 更新 users.csv 的 uploadedResumeNum 字段
+    if os.path.exists(users_file):
+        rows = []
+        updated = False
+        with open(users_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            fieldnames_users = reader.fieldnames or []
+            for row in reader:
+                if row.get('username') == item.username:
+                    # 初始化字段
+                    row.setdefault('uploadedResumeNum', '0')
+                    row['uploadedResumeNum'] = str(int(row.get('uploadedResumeNum', '0')) + 1)
+                    updated = True
+                rows.append(row)
+        # 如果字段不存在在写回时需要加入表头
+        if updated:
+            if 'uploadedResumeNum' not in fieldnames_users:
+                fieldnames_users = fieldnames_users + ['uploadedResumeNum']
+            with open(users_file, 'w', encoding='utf-8', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames_users)
+                writer.writeheader()
+                writer.writerows(rows)
+    else:
+        # 没有 users.csv，不阻碍上传，但记录提示
+        return {'success': True, 'message': '上传成功，但用户数据库不存在，无法同步统计'}
+
+    return {'success': True, 'message': '上传成功'}
+
+
+@app.get('/api/resume/getUploadedList')
+def get_uploaded_list():
+    """返回所有已上传的简历上传记录（若无则生成 3 条模拟数据）"""
+    os.makedirs('data', exist_ok=True)
+    uploaded_file = 'data/uploaded_resumes.csv'
+
+    # 如果文件不存在，生成三条默认模拟数据
+    if not os.path.exists(uploaded_file):
+        mock = [
+            {'task_id': 'T-MOCK-01', 'username': 'alice', 'filename': 'alice_resume.pdf', 'report': '# 模拟报告\n- 分数：88\n- 建议：突出项目', 'score': 88, 'date': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')},
+            {'task_id': 'T-MOCK-02', 'username': 'bob', 'filename': 'bob_resume.pdf', 'report': '# 模拟报告\n- 分数：76\n- 建议：补充实习', 'score': 76, 'date': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')},
+            {'task_id': 'T-MOCK-03', 'username': 'carol', 'filename': 'carol_resume.pdf', 'report': '# 模拟报告\n- 分数：92\n- 建议：保持精炼', 'score': 92, 'date': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')},
+        ]
+        with open(uploaded_file, 'w', encoding='utf-8-sig', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=['task_id','username','filename','report','score','date'])
+            writer.writeheader()
+            writer.writerows(mock)
+
+    # 读取并返回
+    records = []
+    with open(uploaded_file, 'r', encoding='utf-8-sig') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            # convert numeric
+            row['score'] = float(row.get('score') or 0)
+            records.append(row)
+    # 返回按时间倒序（最新在前）
+    records.reverse()
+    return {'success': True, 'data': records}
+
+
+@app.post('/api/resume/delete')
+def delete_upload(username: str, task_id: str):
+    """删除上传记录并同步 users.csv 的统计字段"""
+    uploaded_file = 'data/uploaded_resumes.csv'
+    users_file = 'data/users.csv'
+
+    if not os.path.exists(uploaded_file):
+        return {'success': False, 'message': '没有上传记录文件'}
+
+    rows = []
+    removed = False
+    with open(uploaded_file, 'r', encoding='utf-8-sig') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row.get('username') == username and row.get('task_id') == task_id:
+                removed = True
+                continue
+            rows.append(row)
+
+    if removed:
+        with open(uploaded_file, 'w', encoding='utf-8-sig', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=['task_id','username','filename','report','score','date'])
+            writer.writeheader()
+            writer.writerows(rows)
+
+        # 同步 users.csv uploadedResumeNum 减一
+        if os.path.exists(users_file):
+            urows = []
+            with open(users_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                fieldnames_users = reader.fieldnames or []
+                for row in reader:
+                    if row.get('username') == username:
+                        row.setdefault('uploadedResumeNum', '0')
+                        row['uploadedResumeNum'] = str(max(0, int(row.get('uploadedResumeNum','0')) - 1))
+                    urows.append(row)
+            with open(users_file, 'w', encoding='utf-8', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames_users)
+                writer.writeheader()
+                writer.writerows(urows)
+
+        return {'success': True, 'message': '删除上传记录成功'}
+
+    return {'success': False, 'message': '未找到对应上传记录'}
+
+
+@app.post('/api/user/addTask')
+def add_user_task(username: str):
+    """为用户的 createTaskNum +1（用于统计用户提交到 Admin 的次数）"""
+    users_file = 'data/users.csv'
+    if not os.path.exists(users_file):
+        return {'success': False, 'message': '用户数据库不存在'}
+
+    rows = []
+    updated = False
+    with open(users_file, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        fieldnames_users = reader.fieldnames or []
+        for row in reader:
+            if row.get('username') == username:
+                row.setdefault('createTaskNum', '0')
+                row['createTaskNum'] = str(int(row.get('createTaskNum','0')) + 1)
+                updated = True
+            rows.append(row)
+
+    if updated:
+        if 'createTaskNum' not in fieldnames_users:
+            fieldnames_users = fieldnames_users + ['createTaskNum']
+        with open(users_file, 'w', encoding='utf-8', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames_users)
+            writer.writeheader()
+            writer.writerows(rows)
+        return {'success': True, 'message': '用户任务数已更新'}
+
+    return {'success': False, 'message': '未找到用户'}
 # ==========================================
 # 🎮 虚拟职业体验模块 (Career Simulation)
 # ==========================================
