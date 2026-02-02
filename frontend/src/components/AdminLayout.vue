@@ -9,7 +9,7 @@ import axios from 'axios'
 
 const router = useRouter()
 const route = useRoute()
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
 
 // 🟢 定义响应式数据，而不是死数据
 const adminName = ref('加载中...')
@@ -91,6 +91,10 @@ onUnmounted(() => {
       <el-container>
         <el-header class="admin-header">
   <div class="header-left">
+    <div class="header-links">
+      <router-link to="/about-us" class="header-link">关于我们</router-link>
+      <router-link to="/privacy-policy" class="header-link">隐私政策</router-link>
+    </div>
     <span class="welcome-text">欢迎回来，管理员</span>
   </div>
   <div class="header-right">
@@ -153,6 +157,9 @@ onUnmounted(() => {
   align-items: center;
   padding-left: 24px;
   border-bottom: 1px solid rgba(255,255,255,0.05);
+  margin-top: 50px; /* 增加顶部间距，避免与顶部链接重叠 */
+  position: relative;
+  z-index: 1;
 }
 
 .logo-icon {
@@ -175,6 +182,33 @@ onUnmounted(() => {
   padding: 0 30px;
   height: 64px;
   box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+  position: relative;
+  z-index: 100;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.header-links {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.header-link {
+  font-size: 14px;
+  font-weight: 500;
+  color: #409EFF;
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.header-link:hover {
+  color: #66b1ff;
+  text-decoration: underline;
 }
 
 .admin-main { background-color: #f8f9fa; padding: 24px; }

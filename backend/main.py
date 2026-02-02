@@ -12,6 +12,21 @@ from typing import List
 import shutil # 👈 新增
 from fastapi.staticfiles import StaticFiles # 👈 新增
 from openai import OpenAI
+
+# ==========================================
+# 导入数据库配置和操作函数
+# ==========================================
+from db_config import (
+    get_db_connection, 
+    get_all_users, 
+    get_user_by_username, 
+    user_login,
+    update_user_field,
+    update_user_multiple_fields,
+    create_user,
+    increment_user_field,
+    decrement_user_field
+)
 app = FastAPI()
 
 os.makedirs("static/avatars", exist_ok=True) # 自动创建文件夹
@@ -105,7 +120,12 @@ class AdminProfileModel(BaseModel):
     avatar: str = ""     # 存 Base64 字符串
     lastLogin: str = ""
     ip: str = ""
-    new_password: str = None # 接收新密码
+    new_password: str = None # 接收新密码（已废弃，使用专门的密码修改接口）
+
+class AdminChangePasswordRequest(BaseModel):
+    username: str
+    old_password: str
+    new_password: str
 
 class GenerateResumeRequest(BaseModel):
     focus_direction: str = "通用"
@@ -156,17 +176,28 @@ def get_admin_profile():
     # 确保 data 目录存在
     if not os.path.exists("data"):
         os.makedirs("data")
-        
-    # 如果文件不存在，返回默认数据
+    
+    # 从数据库读取 admin 用户信息
+    db_user = get_user_by_username("admin")
+    db_data = {}
+    if db_user:
+        db_data = {
+            "nickname": db_user.get("nickname", ""),
+            "phone": db_user.get("phone", ""),
+            "email": db_user.get("email", ""),
+            "department": db_user.get("department", ""),
+        }
+    
+    # 如果JSON文件不存在，返回默认数据（合并数据库数据）
     if not os.path.exists(file_path):
         print("⚠️ [DEBUG] JSON 文件不存在，返回默认值")
         default_data = {
             "username": "admin",
-            "nickname": "默认管理员",
+            "nickname": db_data.get("nickname") or "默认管理员",
             "role": "Super Admin",
-            "department": "技术部",
-            "email": "admin@careerfly.com",
-            "phone": "13800000000",
+            "department": db_data.get("department") or "技术部",
+            "email": db_data.get("email") or "admin@careerfly.com",
+            "phone": db_data.get("phone") or "13800000000",
             "avatar": ""
         }
         # 写入文件
@@ -174,74 +205,100 @@ def get_admin_profile():
             json.dump(default_data, f, ensure_ascii=False, indent=2)
         return {"success": True, "data": default_data}
     
-    # 读取文件
+    # 读取JSON文件（包含头像等完整信息）
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
+        
+        # 如果数据库中有更新的数据，合并到返回结果（但保留JSON中的头像）
+        if db_data:
+            data.update({k: v for k, v in db_data.items() if v})  # 只更新非空字段
+        
         print("✅ [DEBUG] 成功读取 JSON 数据")
         return {"success": True, "data": data}
     except Exception as e:
         print(f"❌ [DEBUG] 读取失败: {e}")
         return {"success": False, "message": "读取失败"}
-# 2. 更新管理员信息 (POST)
+# 2. 更新管理员信息 (POST) - 同步到 JSON 和 CSV
 @app.post("/api/admin/profile/update")
 def update_admin_profile(item: AdminProfileModel):
-    print(f"📝 [DEBUG] 收到更新请求: 昵称={item.nickname}, 密码更改={item.new_password}")
+    print(f"📝 [DEBUG] 收到更新请求: 昵称={item.nickname}, 头像长度={len(item.avatar) if item.avatar else 0}")
 
-    # --- A. 保存到 JSON (解决头像和昵称保存) ---
+    # --- A. 保存到 JSON (头像、昵称等基本信息) ---
     json_path = "data/admin_profile.json"
     try:
         # 使用 model_dump 替代 dict (修复 Pydantic 警告)
         save_data = item.model_dump(exclude={"new_password"}) 
+        
+        # 检查头像Base64字符串长度（200KB图片转Base64后约270KB）
+        if item.avatar and len(item.avatar) > 300000:  # 约300KB的Base64字符串
+            return {"success": False, "message": "头像文件过大，请上传小于200KB的图片"}
         
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(save_data, f, ensure_ascii=False, indent=2)
         print("✅ [DEBUG] JSON 文件保存成功")
     except Exception as e:
         print(f"❌ [DEBUG] JSON 保存失败: {e}")
-        return {"success": False, "message": f"JSON保存失败: {e}"}
+        return {"success": False, "message": f"保存失败: {e}"}
 
-    # --- B. 同步密码到 CSV (解决登录密码不更新问题) ---
-    if item.new_password and len(item.new_password) >= 6:
-        csv_path = "data/users.csv"
+    # --- B. 同步所有字段到数据库 (昵称、手机号、邮箱、部门/职位) ---
+    try:
+        # 准备要更新的字段（不包含头像，头像只存在JSON中）
+        update_fields = {}
+        if item.nickname:
+            update_fields["nickname"] = item.nickname
+        if item.phone:
+            update_fields["phone"] = item.phone
+        if item.email:
+            update_fields["email"] = item.email
+        if item.department:
+            update_fields["department"] = item.department
         
-        if not os.path.exists(csv_path):
-            print("❌ [DEBUG] CSV 文件不存在，无法同步密码")
-            return {"success": True, "message": "资料已保存，但用户数据库不存在，无法同步密码"}
-
-        try:
-            # 1. 读取所有数据到内存
-            rows = []
-            updated = False
-            fieldnames = []
-            
-            with open(csv_path, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                fieldnames = reader.fieldnames # 获取表头
-                
-                for row in reader:
-                    # 强力匹配：去除空格
-                    if row.get("username", "").strip() == "admin":
-                        print(f"🔄 [DEBUG] 找到 admin 用户，正在更新密码为: {item.new_password}")
-                        row["password"] = item.new_password
-                        updated = True
-                    rows.append(row)
-            
-            # 2. 只有真的改了才写回文件
-            if updated:
-                with open(csv_path, "w", encoding="utf-8", newline="") as f:
-                    writer = csv.DictWriter(f, fieldnames=fieldnames)
-                    writer.writeheader()
-                    writer.writerows(rows)
-                print("✅ [DEBUG] CSV 密码同步完成")
+        # 更新数据库
+        if update_fields:
+            username = item.username or "admin"
+            success = update_user_multiple_fields(username, update_fields)
+            if success:
+                print("✅ [DEBUG] 数据库资料同步完成")
             else:
-                print("⚠️ [DEBUG] 未在 CSV 中找到 admin 用户，密码未同步")
-
-        except Exception as e:
-            print(f"❌ [DEBUG] CSV 操作出错: {e}")
-            return {"success": False, "message": "CSV同步失败"}
+                print("⚠️ [DEBUG] 数据库更新失败或用户不存在")
+    except Exception as e:
+        print(f"❌ [DEBUG] 数据库操作出错: {e}")
+        # 数据库同步失败不影响JSON保存
+        return {"success": True, "message": "资料已保存到JSON，但数据库同步失败"}
 
     return {"success": True, "message": "更新成功"}
+
+# 3. 管理员密码修改接口（包含旧密码验证）
+@app.post("/api/admin/profile/change-password")
+def change_admin_password(req: AdminChangePasswordRequest):
+    print(f"🔐 [DEBUG] 收到密码修改请求: 用户={req.username}")
+    
+    # 1. 验证旧密码（使用数据库）
+    user = get_user_by_username(req.username)
+    if not user:
+        return {"success": False, "message": "用户不存在"}
+    
+    # 验证旧密码
+    if user.get("password", "").strip() != req.old_password:
+        print(f"❌ [DEBUG] 旧密码不正确")
+        return {"success": False, "message": "旧密码不正确，请重新输入"}
+    
+    # 2. 新密码复杂度校验
+    if len(req.new_password) < 8:
+        return {"success": False, "message": "新密码长度至少 8 位"}
+    
+    # 3. 更新数据库密码
+    try:
+        success = update_user_field(req.username, "password", req.new_password)
+        if success:
+            print("✅ [DEBUG] 密码更新成功")
+            return {"success": True, "message": "密码修改成功，请重新登录"}
+        else:
+            return {"success": False, "message": "密码更新失败"}
+    except Exception as e:
+        print(f"❌ [DEBUG] 密码更新失败: {e}")
+        return {"success": False, "message": f"密码更新失败: {e}"}
 
 # --- 3. 新增：获取历史记录接口 ---
 @app.get("/api/history")
@@ -267,21 +324,21 @@ async def root():
 
 @app.post("/api/login")
 def login(request: LoginRequest):
-    users_file = "data/users.csv"
-    if not os.path.exists(users_file):
-        # 如果文件不存在，直接返回一个模拟成功，方便测试
-        return {"success": True, "message": "测试登录成功 (无数据库)", "user": {"username": request.username, "grade": "大三", "target_role": "算法工程师"}}
-    
-    with open(users_file, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for user in reader:
-            if user['username'] == request.username and user['password'] == request.password:
-                return {
-                    "success": True, 
-                    "message": "登录成功", 
-                    "user": user
-                }
-    return {"success": False, "message": "用户名或密码错误"}
+    # 使用数据库验证登录
+    success, message = user_login(request.username, request.password)
+    if success:
+        # 登录成功，获取用户完整信息
+        user = get_user_by_username(request.username)
+        if user:
+            return {
+                "success": True, 
+                "message": "登录成功", 
+                "user": user
+            }
+        else:
+            return {"success": False, "message": "获取用户信息失败"}
+    else:
+        return {"success": False, "message": message}
 
 # ==========================================
 # 🛑 替换 main.py 里的 register 函数
@@ -289,44 +346,9 @@ def login(request: LoginRequest):
 
 @app.post("/api/register")
 def register(req: RegisterRequest):
-    csv_path = "data/users.csv"
-    
-    # 1. 检查文件是否存在
-    if not os.path.exists(csv_path):
-        return {"success": False, "message": "数据库未初始化，请先联系管理员"}
-
-    # 2. 检查用户名是否已存在
-    users = []
-    with open(csv_path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if row["username"] == req.username:
-                return {"success": False, "message": "该用户名已被注册"}
-            users.append(row)
-    
-    # 3. 追加新用户
-    # 注意：这里把 req.grade 存入 CSV
-    new_user = {
-        "username": req.username,
-        "password": req.password,
-        "grade": req.grade,      # 这里如果是 '管理员'，下次登录就会被识别
-        "target_role": req.target_role
-    }
-    
-    try:
-        # 追加模式 'a' 不太安全（容易乱表头），建议用重写模式
-        users.append(new_user)
-        fieldnames = ["username", "password", "grade", "target_role"]
-        
-        with open(csv_path, "w", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(users)
-            
-        return {"success": True, "message": "注册成功"}
-    except Exception as e:
-        print(f"注册写入失败: {e}")
-        return {"success": False, "message": "注册写入失败"}
+    # 使用数据库创建新用户
+    success, message = create_user(req.username, req.password, req.grade, req.target_role)
+    return {"success": success, "message": message}
 
 # ==========================================
 #  核心功能 B: 职位推荐 (修复 404 错误)
@@ -506,32 +528,20 @@ class ChangePwdRequest(BaseModel):
 
 @app.post("/api/user/change_password")
 def change_password(req: ChangePwdRequest):
-    users_file = "data/users.csv"
-    rows = []
-    updated = False
+    # 1. 验证旧密码（使用数据库）
+    user = get_user_by_username(req.username)
+    if not user:
+        return {"success": False, "message": "用户不存在"}
     
-    # 1. 读取并查找
-    with open(users_file, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if row['username'] == req.username:
-                if row['password'] != req.old_password:
-                    return {"success": False, "message": "旧密码不正确"}
-                row['password'] = req.new_password # 更新密码
-                updated = True
-            rows.append(row)
+    if user.get('password', '').strip() != req.old_password:
+        return {"success": False, "message": "旧密码不正确"}
     
-    # 2. 写回文件
-    if updated:
-        with open(users_file, 'w', encoding='utf-8', newline='') as f:
-            # 注意：这里要跟你 users.csv 的表头一致
-            fieldnames = ['username', 'password', 'grade', 'target_role']
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(rows)
+    # 2. 更新数据库密码
+    success = update_user_field(req.username, "password", req.new_password)
+    if success:
         return {"success": True, "message": "密码修改成功"}
-    
-    return {"success": False, "message": "用户不存在"}
+    else:
+        return {"success": False, "message": "密码更新失败"}
 
 # --- 5. 上传头像接口 ---
 @app.post("/api/user/upload_avatar")
@@ -605,7 +615,7 @@ class ResumeUploadRequest(BaseModel):
 
 @app.post('/api/resume/upload')
 def upload_resume(item: ResumeUploadRequest):
-    """接收前端上传的简历报告，持久化到 data/uploaded_resumes.csv 并更新 users.csv 的 uploadedResumeNum 字段"""
+    """接收前端上传的简历报告，持久化到 data/uploaded_resumes.csv 并更新数据库的 uploadedResumeNum 字段"""
     os.makedirs('data', exist_ok=True)
     uploaded_file = 'data/uploaded_resumes.csv'
     users_file = 'data/users.csv'
@@ -633,31 +643,15 @@ def upload_resume(item: ResumeUploadRequest):
     except Exception as e:
         return {'success': False, 'message': f'写入上传记录失败: {e}'}
 
-    # 2. 更新 users.csv 的 uploadedResumeNum 字段
-    if os.path.exists(users_file):
-        rows = []
-        updated = False
-        with open(users_file, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            fieldnames_users = reader.fieldnames or []
-            for row in reader:
-                if row.get('username') == item.username:
-                    # 初始化字段
-                    row.setdefault('uploadedResumeNum', '0')
-                    row['uploadedResumeNum'] = str(int(row.get('uploadedResumeNum', '0')) + 1)
-                    updated = True
-                rows.append(row)
-        # 如果字段不存在在写回时需要加入表头
-        if updated:
-            if 'uploadedResumeNum' not in fieldnames_users:
-                fieldnames_users = fieldnames_users + ['uploadedResumeNum']
-            with open(users_file, 'w', encoding='utf-8', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames_users)
-                writer.writeheader()
-                writer.writerows(rows)
-    else:
-        # 没有 users.csv，不阻碍上传，但记录提示
-        return {'success': True, 'message': '上传成功，但用户数据库不存在，无法同步统计'}
+    # 2. 更新数据库的 uploadedResumeNum 字段
+    try:
+        success = increment_user_field(item.username, "uploadedResumeNum", 1)
+        if not success:
+            print(f"⚠️ [DEBUG] 用户 {item.username} 的 uploadedResumeNum 更新失败")
+    except Exception as e:
+        print(f"⚠️ [DEBUG] 更新 uploadedResumeNum 失败: {e}")
+        # 不阻碍上传，但记录提示
+        return {'success': True, 'message': '上传成功，但用户统计更新失败'}
 
     return {'success': True, 'message': '上传成功'}
 
@@ -695,9 +689,8 @@ def get_uploaded_list():
 
 @app.post('/api/resume/delete')
 def delete_upload(username: str, task_id: str):
-    """删除上传记录并同步 users.csv 的统计字段"""
+    """删除上传记录并同步数据库的统计字段"""
     uploaded_file = 'data/uploaded_resumes.csv'
-    users_file = 'data/users.csv'
 
     if not os.path.exists(uploaded_file):
         return {'success': False, 'message': '没有上传记录文件'}
@@ -718,21 +711,11 @@ def delete_upload(username: str, task_id: str):
             writer.writeheader()
             writer.writerows(rows)
 
-        # 同步 users.csv uploadedResumeNum 减一
-        if os.path.exists(users_file):
-            urows = []
-            with open(users_file, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                fieldnames_users = reader.fieldnames or []
-                for row in reader:
-                    if row.get('username') == username:
-                        row.setdefault('uploadedResumeNum', '0')
-                        row['uploadedResumeNum'] = str(max(0, int(row.get('uploadedResumeNum','0')) - 1))
-                    urows.append(row)
-            with open(users_file, 'w', encoding='utf-8', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames_users)
-                writer.writeheader()
-                writer.writerows(urows)
+        # 同步数据库 uploadedResumeNum 减一
+        try:
+            decrement_user_field(username, "uploadedResumeNum", 1)
+        except Exception as e:
+            print(f"⚠️ [DEBUG] 更新 uploadedResumeNum 失败: {e}")
 
         return {'success': True, 'message': '删除上传记录成功'}
 
@@ -742,32 +725,15 @@ def delete_upload(username: str, task_id: str):
 @app.post('/api/user/addTask')
 def add_user_task(username: str):
     """为用户的 createTaskNum +1（用于统计用户提交到 Admin 的次数）"""
-    users_file = 'data/users.csv'
-    if not os.path.exists(users_file):
-        return {'success': False, 'message': '用户数据库不存在'}
-
-    rows = []
-    updated = False
-    with open(users_file, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        fieldnames_users = reader.fieldnames or []
-        for row in reader:
-            if row.get('username') == username:
-                row.setdefault('createTaskNum', '0')
-                row['createTaskNum'] = str(int(row.get('createTaskNum','0')) + 1)
-                updated = True
-            rows.append(row)
-
-    if updated:
-        if 'createTaskNum' not in fieldnames_users:
-            fieldnames_users = fieldnames_users + ['createTaskNum']
-        with open(users_file, 'w', encoding='utf-8', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames_users)
-            writer.writeheader()
-            writer.writerows(rows)
-        return {'success': True, 'message': '用户任务数已更新'}
-
-    return {'success': False, 'message': '未找到用户'}
+    try:
+        success = increment_user_field(username, "createTaskNum", 1)
+        if success:
+            return {'success': True, 'message': '用户任务数已更新'}
+        else:
+            return {'success': False, 'message': '未找到用户或更新失败'}
+    except Exception as e:
+        print(f"❌ [DEBUG] 更新 createTaskNum 失败: {e}")
+        return {'success': False, 'message': f'更新失败: {e}'}
 # ==========================================
 # 🎮 虚拟职业体验模块 (Career Simulation)
 # ==========================================
@@ -953,5 +919,52 @@ def generate_career(req: GenerateCareerRequest):
 #  启动入口
 # ==========================================
 if __name__ == "__main__":
-    print("🚀 服务器启动中...")
+    # ==========================================
+    #  数据库连接测试（可选，用于验证配置）
+    # ==========================================
+    print("=" * 50)
+    print("📊 数据库连接测试")
+    print("=" * 50)
+    
+    # 测试1: 数据库连接
+    print("\n1️⃣ 测试数据库连接...")
+    conn = get_db_connection()
+    if conn:
+        conn.close()
+        print("✅ 数据库连接成功！")
+    else:
+        print("❌ 数据库连接失败，请检查 db_config.py 中的配置")
+        print("   提示：请确保已修改 password 参数为腾讯云重置的 root 密码")
+    
+    # 测试2: 获取所有用户
+    print("\n2️⃣ 测试获取所有用户数据...")
+    all_users = get_all_users()
+    print(f"✅ 成功获取 {len(all_users)} 条用户数据")
+    if len(all_users) > 0:
+        print(f"   示例用户：{all_users[0].get('username', 'N/A')}")
+    
+    # 测试3: 用户登录验证
+    print("\n3️⃣ 测试用户登录验证...")
+    if len(all_users) > 0:
+        test_user = all_users[0]
+        test_username = test_user.get('username', '')
+        test_password = test_user.get('password', '')
+        
+        # 测试正确密码
+        success, msg = user_login(test_username, test_password)
+        print(f"   正确密码测试: {msg}")
+        
+        # 测试错误密码
+        success, msg = user_login(test_username, "wrong_password")
+        print(f"   错误密码测试: {msg}")
+    else:
+        print("   ⚠️ 无用户数据，跳过登录测试")
+    
+    print("\n" + "=" * 50)
+    print("✅ 测试完成！")
+    print("=" * 50)
+    print("\n🚀 启动 FastAPI 服务器...")
+    print("   访问地址: http://127.0.0.1:8001")
+    print("   API 文档: http://127.0.0.1:8001/docs\n")
+    
     uvicorn.run(app, host="127.0.0.1", port=8001)

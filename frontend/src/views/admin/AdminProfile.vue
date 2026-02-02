@@ -4,7 +4,7 @@ import { User, Message, Iphone, Upload, Postcard, Lock } from '@element-plus/ico
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
 
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
 
 // 数据容器
 const adminInfo = ref({
@@ -37,6 +37,14 @@ const fetchProfile = async () => {
 
 // 🟢 2. 保存并通知顶栏
 const handleSaveInfo = async () => {
+  // 验证头像大小（Base64字符串长度检查）
+  if (adminInfo.value.avatar) {
+    // Base64编码后的大小约为原文件的1.33倍，200KB图片约270KB
+    if (adminInfo.value.avatar.length > 300000) {
+      return ElMessage.error('头像文件过大，请上传小于200KB的图片')
+    }
+  }
+  
   loading.value = true
   try {
     const res = await axios.post(`${API_BASE}/api/admin/profile/update`, adminInfo.value)
@@ -45,10 +53,15 @@ const handleSaveInfo = async () => {
       // 发送信号让 Layout 刷新头像
       window.dispatchEvent(new Event('admin-profile-updated'))
     } else {
-      ElMessage.error(res.data.message)
+      ElMessage.error(res.data.message || '保存失败')
     }
   } catch (error) {
-    ElMessage.error('网络错误或图片太大，请换张小图试试')
+    console.error('保存错误:', error)
+    if (error.response && error.response.data && error.response.data.message) {
+      ElMessage.error(error.response.data.message)
+    } else {
+      ElMessage.error('网络错误，请稍后重试')
+    }
   } finally {
     loading.value = false
   }
@@ -58,54 +71,102 @@ const handleSaveInfo = async () => {
 const handleAvatarChange = (uploadFile) => {
   const file = uploadFile.raw
   
-  if (!file) return
-
-  // A. 格式限制
-  const isJPGOrPNG = file.type === 'image/jpeg' || file.type === 'image/png'
-  if (!isJPGOrPNG) {
-    return ElMessage.error('头像只能是 JPG 或 PNG 格式!')
+  if (!file) {
+    ElMessage.error('未选择文件')
+    return false
   }
 
-  // B. 大小限制 (非常重要！限制为 200KB)
-  // 因为我们是存 JSON，图片太大后端会崩溃
-  const isLt200K = file.size / 1024 < 200
-  if (!isLt200K) {
-    return ElMessage.error('图片太大了！为了系统流畅，请上传 200KB 以下的图片。')
+  // A. 格式限制（支持 jpg/png/webp）
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+  if (!allowedTypes.includes(file.type)) {
+    ElMessage.error('头像只能是 JPG、PNG 或 WebP 格式!')
+    return false
+  }
+
+  // B. 大小限制 (限制为 200KB)
+  const fileSizeKB = file.size / 1024
+  if (fileSizeKB > 200) {
+    ElMessage.error(`图片大小为 ${fileSizeKB.toFixed(2)}KB，超过了 200KB 限制！请压缩图片后重试。`)
+    return false
   }
 
   // C. 转 Base64 用于显示和存储
   const reader = new FileReader()
+  reader.onerror = () => {
+    ElMessage.error('图片读取失败，请重试')
+  }
   reader.readAsDataURL(file)
   reader.onload = (e) => {
-    // 把转好的字符串存进变量，页面上的头像会立马变
-    adminInfo.value.avatar = e.target.result 
-    ElMessage.success('头像已预览，请点击底部的“保存修改”以永久生效')
+    try {
+      // 把转好的字符串存进变量，页面上的头像会立马变
+      adminInfo.value.avatar = e.target.result 
+      ElMessage.success('头像已预览，请点击底部的"保存修改"以永久生效')
+    } catch (error) {
+      console.error('头像处理错误:', error)
+      ElMessage.error('头像处理失败，请重试')
+    }
   }
+  
+  return false // 阻止自动上传
 }
 
-// 修改密码
+// 修改密码 - 完善版本（包含旧密码验证和复杂度校验）
 const handleChangePassword = async () => {
-  if (passwordForm.newPass !== passwordForm.confirmPass) return ElMessage.error('两次密码不一致')
-  if (passwordForm.newPass.length < 6) return ElMessage.warning('密码长度至少 6 位')
+  // 1. 表单校验
+  if (!passwordForm.oldPass) {
+    return ElMessage.error('请输入旧密码')
+  }
+  if (!passwordForm.newPass) {
+    return ElMessage.error('请输入新密码')
+  }
+  if (!passwordForm.confirmPass) {
+    return ElMessage.error('请确认新密码')
+  }
+  
+  // 2. 新密码与确认密码必须一致
+  if (passwordForm.newPass !== passwordForm.confirmPass) {
+    return ElMessage.error('两次输入的新密码不一致，请重新输入')
+  }
+  
+  // 3. 新密码复杂度要求（长度≥8位）
+  if (passwordForm.newPass.length < 8) {
+    return ElMessage.error('新密码长度至少 8 位，请重新设置')
+  }
+  
+  // 4. 新密码不能与旧密码相同
+  if (passwordForm.oldPass === passwordForm.newPass) {
+    return ElMessage.error('新密码不能与旧密码相同，请重新设置')
+  }
 
   loading.value = true
   try {
-    const payload = {
-      ...adminInfo.value,
+    // 调用专门的密码修改接口，包含旧密码验证
+    const res = await axios.post(`${API_BASE}/api/admin/profile/change-password`, {
+      username: adminInfo.value.username || 'admin',
+      old_password: passwordForm.oldPass,
       new_password: passwordForm.newPass
-    }
-    const res = await axios.post(`${API_BASE}/api/admin/profile/update`, payload)
+    })
 
     if (res.data.success) {
-      ElMessage.success('密码修改成功！下次请用新密码登录')
+      ElMessage.success('密码修改成功！请重新登录')
+      // 清空表单
       passwordForm.oldPass = ''
       passwordForm.newPass = '' 
       passwordForm.confirmPass = ''
+      // 延迟跳转到登录页
+      setTimeout(() => {
+        window.location.href = '/login'
+      }, 2000)
     } else {
-      ElMessage.error(res.data.message)
+      ElMessage.error(res.data.message || '密码修改失败')
     }
   } catch (error) {
-    ElMessage.error('请求失败')
+    console.error('密码修改错误:', error)
+    if (error.response && error.response.data && error.response.data.message) {
+      ElMessage.error(error.response.data.message)
+    } else {
+      ElMessage.error('网络错误，请稍后重试')
+    }
   } finally {
     loading.value = false
   }
@@ -225,12 +286,33 @@ onMounted(() => {
               <div class="form-wrapper security-wrapper">
                 <el-alert title="修改密码后需要重新登录" type="warning" show-icon :closable="false" style="margin-bottom:20px;" />
                 
-                <el-form :model="passwordForm" label-width="100px" label-position="left">
-                  <el-form-item label="新密码">
-                    <el-input v-model="passwordForm.newPass" type="password" show-password />
+                <el-form :model="passwordForm" label-width="120px" label-position="left">
+                  <el-form-item label="旧密码" required>
+                    <el-input 
+                      v-model="passwordForm.oldPass" 
+                      type="password" 
+                      show-password 
+                      placeholder="请输入当前密码"
+                    />
                   </el-form-item>
-                  <el-form-item label="确认密码">
-                    <el-input v-model="passwordForm.confirmPass" type="password" show-password />
+                  <el-form-item label="新密码" required>
+                    <el-input 
+                      v-model="passwordForm.newPass" 
+                      type="password" 
+                      show-password 
+                      placeholder="至少8位字符"
+                    />
+                    <div style="font-size: 12px; color: #909399; margin-top: 5px;">
+                      密码长度至少 8 位
+                    </div>
+                  </el-form-item>
+                  <el-form-item label="确认新密码" required>
+                    <el-input 
+                      v-model="passwordForm.confirmPass" 
+                      type="password" 
+                      show-password 
+                      placeholder="请再次输入新密码"
+                    />
                   </el-form-item>
                   
                   <el-form-item>
