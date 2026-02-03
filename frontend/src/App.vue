@@ -31,7 +31,7 @@ const route = useRoute()
 // ==========================================
 // 2. 核心变量定义 (State) - 放在最前防止报错
 // ==========================================
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
+const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 console.debug('[App] API_BASE ->', API_BASE)
 const currentUser = ref(null)
 const activeMenu = ref('0')

@@ -9,7 +9,7 @@ import axios from 'axios'
 
 const router = useRouter()
 const route = useRoute()
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
+const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 // 🟢 定义响应式数据，而不是死数据
 const adminName = ref('加载中...')

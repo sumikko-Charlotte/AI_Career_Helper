@@ -13,7 +13,7 @@ const md = new MarkdownIt() // 初始化渲染器
 
 // --- 核心状态 ---
 const currentMode = ref('basic')
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
+const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 console.debug('[ResumeDoctor] API_BASE ->', API_BASE)
 const fileList = ref([])                 // ✅ 保留你的结构
 const displayFileName = ref('')          // ✅ 新增：用于展示已选择的文件名
