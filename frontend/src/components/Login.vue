@@ -188,10 +188,16 @@ const handleSubmit = () => {
   <router-link to="/privacy-policy" style="font-size: 14px; font-weight: 500; color: #409EFF;">隐私政策</router-link>
 </div>
   <div class="login-container">
+    <!-- ==========================================
+         修改背景样式：替换为UI组设计图的星空/蓝紫渐变背景
+         ========================================== -->
     <div class="background-gradient"></div>
 
     <div class="login-card">
       <div class="login-header">
+        <!-- ==========================================
+             样式恢复：完全还原为居中登录卡片，不显示任何Logo
+             ========================================== -->
         <h1 class="login-title">职航——AI辅助的大学生生涯成长平台</h1>
         <p class="login-subtitle">
           {{ isLogin ? '登录您的账户' : '创建新账户' }}
@@ -296,7 +302,9 @@ const handleSubmit = () => {
 </template>
 
 <style scoped>
-/* --- 样式完全保持不变 --- */
+/* ==========================================
+   基础容器样式（保持不变）
+   ========================================== */
 .login-container {
   position: relative;
   min-height: 100vh;
@@ -307,43 +315,47 @@ const handleSubmit = () => {
   overflow: hidden;
 }
 
+/* ==========================================
+   修改背景样式：替换为UI组设计图的星空/蓝紫渐变背景
+   ========================================== */
 .background-gradient {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+  /* 使用背景图片（如果图片存在）或CSS渐变作为备选 */
+  background-image: 
+    url('/assets/login-bg.jpg'),
+    linear-gradient(135deg, #0a1a40 0%, #1e293b 30%, #4A6FA5 70%, #2d1b4e 100%);
+  background-size: cover, cover;
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+  /* 如果图片加载失败，渐变会作为底层显示 */
   z-index: -1;
 }
 
+/* 添加星空效果（可选，增强视觉） */
 .background-gradient::before {
   content: '';
   position: absolute;
-  top: 10%;
-  left: 10%;
-  width: 300px;
-  height: 300px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
-  border-radius: 50%;
-  animation: float 6s ease-in-out infinite;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: 
+    radial-gradient(2px 2px at 20% 30%, rgba(255, 255, 255, 0.3), transparent),
+    radial-gradient(2px 2px at 60% 70%, rgba(255, 255, 255, 0.2), transparent),
+    radial-gradient(1px 1px at 50% 50%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1px 1px at 80% 10%, rgba(255, 255, 255, 0.3), transparent);
+  background-size: 200% 200%;
+  animation: twinkle 8s ease-in-out infinite;
+  opacity: 0.6;
 }
 
-.background-gradient::after {
-  content: '';
-  position: absolute;
-  bottom: 10%;
-  right: 10%;
-  width: 200px;
-  height: 200px;
-  background: radial-gradient(circle, rgba(147, 51, 234, 0.1) 0%, transparent 70%);
-  border-radius: 50%;
-  animation: float 8s ease-in-out infinite reverse;
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-20px); }
+@keyframes twinkle {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.8; }
 }
 
 .login-card {
@@ -363,6 +375,7 @@ const handleSubmit = () => {
   text-align: center;
   margin-bottom: 32px;
 }
+
 
 .login-title {
   font-size: 28px;
@@ -399,17 +412,24 @@ const handleSubmit = () => {
   font-weight: 500;
 }
 
+/* ==========================================
+   修改输入框样式：改成UI组设计的半透明白色圆角样式
+   ========================================== */
 .form-input,
 .form-select {
   padding: 12px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.1);
+  /* 半透明白色背景，贴合UI设计 */
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
   color: #ffffff;
   font-size: 16px;
   transition: all 0.3s ease;
-  width: 100%; /* Ensure inputs take full width */
-  box-sizing: border-box; /* Fix padding issues */
+  width: 100%;
+  box-sizing: border-box;
+  /* 添加轻微内阴影，增强立体感 */
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .form-input::placeholder {
@@ -428,9 +448,11 @@ const handleSubmit = () => {
 .form-input:focus,
 .form-select:focus {
   outline: none;
-  border-color: #60a5fa;
-  background: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.25);
+  box-shadow: 
+    0 0 0 3px rgba(96, 165, 250, 0.2),
+    inset 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .form-options {
@@ -472,23 +494,31 @@ const handleSubmit = () => {
   text-decoration: underline;
 }
 
+/* ==========================================
+   修改登录按钮样式：改成UI组设计的深蓝到紫色渐变样式
+   ========================================== */
 .submit-button {
   padding: 14px;
   border: none;
   border-radius: 12px;
-  background: linear-gradient(135deg, #60a5fa, #a78bfa);
+  /* 深蓝到紫色渐变，贴合UI设计 */
+  background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #7c3aed 100%);
   color: #ffffff;
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  margin-top: 25px; /* Added margin top since gap was removed from parent */
+  margin-top: 25px;
   width: 100%;
+  /* 添加按钮阴影，增强视觉层次 */
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
 }
 
 .submit-button:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 10px 25px rgba(96, 165, 250, 0.3);
+  /* 悬浮时增强阴影和渐变 */
+  background: linear-gradient(135deg, #1e40af 0%, #2563eb 50%, #8b5cf6 100%);
+  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.5);
 }
 
 .submit-button:disabled {
@@ -525,7 +555,22 @@ const handleSubmit = () => {
   color: #a78bfa;
 }
 
+/* ==========================================
+   响应式适配：电脑、平板、手机端都能正常显示
+   ========================================== */
+@media (max-width: 768px) {
+  /* 平板端适配 */
+  .logo-image {
+    max-width: 220px;
+  }
+  
+  .login-card {
+    padding: 35px 25px;
+  }
+}
+
 @media (max-width: 480px) {
+  /* 手机端适配 */
   .login-card {
     padding: 30px 20px;
     margin: 10px;
@@ -533,6 +578,25 @@ const handleSubmit = () => {
 
   .login-title {
     font-size: 24px;
+  }
+  
+  .logo-image {
+    max-width: 180px;
+  }
+  
+  .logo-container {
+    margin-bottom: 20px;
+  }
+}
+
+@media (max-width: 360px) {
+  /* 小屏手机适配 */
+  .logo-image {
+    max-width: 150px;
+  }
+  
+  .login-title {
+    font-size: 20px;
   }
 }
 </style>

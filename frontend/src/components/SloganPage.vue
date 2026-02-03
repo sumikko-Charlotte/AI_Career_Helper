@@ -1,28 +1,36 @@
 <template>
-    <div class="slogan-page">
-      <!-- 左侧侧边栏 -->
-      <div class="sidebar">
-        <div class="logo">LOGO</div>
-        <div class="menu">
-          <div class="menu-item" @click="goToAboutUs">关于我们</div>
-          <div class="menu-item" @click="goToPrivacyPolicy">隐私政策</div>
-        </div>
+  <div class="slogan-page">
+    <!-- 左侧侧边栏 -->
+    <div class="sidebar">
+      <!-- ==========================================
+           添加Logo：在页面左上角原LOGO文字位置嵌入图片
+           使用 @/ 别名引用 src/assets 目录中的图片资源
+           ========================================== -->
+      <div class="logo-container">
+        <img src="@/assets/images/zh-logo.jpg" alt="职航 CAREER FLY" class="logo-image" />
       </div>
-  
-      <!-- 右侧主内容区 -->
-      <div class="main-content">
-        <h1 class="slogan">职航——AI辅助的大学生生涯成长平台</h1>
-        <p class="sub-slogan">发现你的无限可能</p>
-        <button class="start-btn" @click="goToRegister">开始探索</button>
+      <div class="menu">
+        <div class="menu-item" @click="goToAboutUs">关于我们</div>
+        <div class="menu-item" @click="goToPrivacyPolicy">隐私政策</div>
       </div>
     </div>
-  </template>
+
+    <!-- 右侧主内容区 -->
+    <div class="main-content">
+      <h1 class="slogan">职航——AI辅助的大学生生涯成长平台</h1>
+      <p class="sub-slogan">发现你的无限可能</p>
+      <button class="start-btn" @click="goToRegister">开始探索</button>
+    </div>
+  </div>
+</template>
   
-  <script setup>
-  import { useRouter } from 'vue-router'
-  
-  const router = useRouter()
-  // 修改：点击「开始探索」按钮，直接跳转到登录页
+<script setup>
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+  // ==========================================
+  // 交互逻辑：点击「开始探索」按钮，路由跳转到登录页
+  // ==========================================
   const goToRegister = () => {
     router.push('/login')
   }
@@ -57,10 +65,39 @@
     color: #FFFFFF;
   }
   
-  .logo {
-    font-size: 24px;
-    font-weight: 700;
+  /* ==========================================
+     添加Logo样式：Logo容器与图片样式
+     ========================================== */
+  .logo-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
     margin-bottom: 80px;
+    width: 100%;
+    padding: 0 20px;
+  }
+  
+  .logo-image {
+    max-width: 160px;
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+    /* 添加与深蓝色侧边栏背景融合的渐变色彩渲染效果 */
+    filter: 
+      drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3))
+      brightness(1.1)
+      contrast(1.05);
+    /* 添加轻微蓝色调，与侧边栏背景融合 */
+    mix-blend-mode: normal;
+    transition: all 0.3s ease;
+  }
+  
+  .logo-image:hover {
+    filter: 
+      drop-shadow(0 6px 16px rgba(64, 158, 255, 0.4))
+      brightness(1.15)
+      contrast(1.1);
+    transform: scale(1.02);
   }
   
   .menu-item {

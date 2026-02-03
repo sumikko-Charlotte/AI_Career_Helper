@@ -377,10 +377,188 @@ def chat(request: ChatRequest):
 # ==========================================
 #  核心功能 D: 生涯规划 (雷达图 + 时间轴)
 # ==========================================
+def _generate_roadmap_with_ai(current_grade: str, target_role: str) -> dict:
+    """
+    使用 Deepseek API 生成生涯路径规划
+    返回结构化的规划数据，包含从大一到大四的详细时间规划表
+    """
+    system_prompt = """你是一位资深的大学生职业规划导师，拥有10年以上行业经验，擅长为不同年级和职业方向的学生制定详细的成长路径规划。
+
+请根据用户输入的「当前年级」和「意向职业」，生成一份从大一到大四的完整生涯规划。
+
+**输出要求（严格 JSON 格式）：**
+{
+  "stages": [
+    {
+      "grade": "大一",
+      "title": "阶段标题（如：夯实编程基础）",
+      "content": "详细的学习重点、比赛推荐、实习安排和目标荣誉（150-200字，要求具体、可执行）",
+      "resources": ["推荐资源1（具体书名或平台名）", "推荐资源2", "推荐资源3"],
+      "certificates": ["目标证书/荣誉1（具体名称）", "目标证书/荣誉2"],
+      "recommended_companies": []  // 仅大四阶段填写，其他阶段为空数组
+    },
+    // ... 大二、大三、大四（必须包含所有四个年级）
+  ],
+  "ai_comment": "针对性的AI导师洞察（80-120字，包含当前阶段重点建议）"
+}
+
+**规划原则（必须严格遵守）：**
+- **大一阶段**：侧重基础学习与入门竞赛
+  * 学习重点：编程语言基础（如Python/Java/C++）、数据结构与算法、计算机基础课程
+  * 比赛推荐：蓝桥杯、PAT、CCF CSP认证、校内编程竞赛
+  * 实习安排：暂不安排（大一以学习为主）
+  * 目标荣誉：计算机二级证书、编程语言认证、校内竞赛获奖、优秀学生奖学金
+
+- **大二阶段**：侧重竞赛进阶与项目实践
+  * 学习重点：深入学习专业课程、算法进阶、框架学习、项目开发
+  * 比赛推荐：ACM-ICPC、蓝桥杯国赛、天池/Kaggle数据竞赛、开源项目贡献
+  * 实习安排：可尝试暑期短期实习或项目实践
+  * 目标荣誉：算法竞赛获奖证书、Kaggle竞赛证书、GitHub项目认证、技术博客认证
+
+- **大三阶段**：侧重实习积累与技术深度
+  * 学习重点：系统设计、技术深度、行业认知、软技能提升
+  * 比赛推荐：继续参与高级竞赛、技术挑战赛、创新项目大赛
+  * 实习安排：投递大厂日常实习或暑期实习（如字节跳动、腾讯、阿里巴巴等）
+  * 目标荣誉：大厂实习证明、论文发表/技术博客认证、开源项目贡献认证、优秀实习生
+
+- **大四阶段**：侧重校招冲刺与入职准备
+  * 学习重点：面试准备、系统设计、简历优化、作品集完善
+  * 比赛推荐：继续参与高级竞赛（如时间允许）
+  * 实习安排：可继续实习或准备秋招
+  * 目标荣誉：算法工程师Offer、技术专家认证、优秀毕业生
+  * 推荐企业：根据职业方向推荐3-6家适配企业，并附带简要匹配理由
+
+**企业推荐要求（仅大四阶段）：**
+- 根据职业方向推荐3-6家适配的企业
+- 包含互联网大厂、知名企业等（如：字节跳动、阿里巴巴、腾讯、百度、美团、滴滴、京东、网易等）
+- 每个企业名称简洁（2-4个字）
+- 企业选择要贴合职业方向（如算法方向推荐AI/算法强项的企业，前端方向推荐前端技术栈先进的企业）
+
+**内容要求：**
+- content 字段必须详细具体，包含具体的学习内容、比赛名称、实习建议、荣誉目标
+- resources 字段推荐3-5个具体的学习资源（如书名、在线课程、平台名称）
+- certificates 字段推荐2-4个具体可获得的证书或荣誉
+- 所有内容必须贴合职业方向，具有针对性和可执行性
+
+请确保输出为严格有效的 JSON 格式，不要包含任何 Markdown 代码块标记（如```json```）。"""
+
+    user_prompt = f"""当前年级：{current_grade}
+意向职业：{target_role}
+
+请为这位学生生成一份从大一到大四的详细生涯路径规划。
+
+**要求：**
+1. 必须生成完整的四个年级（大一、大二、大三、大四）的规划
+2. 每个阶段的内容要详细具体，包含：
+   - 具体的学习重点（如：学习哪些技术栈、完成哪些项目）
+   - 具体的比赛推荐（如：蓝桥杯、ACM-ICPC、Kaggle等）
+   - 具体的实习安排建议（大三、大四阶段）
+   - 具体的目标荣誉/证书（如：计算机二级、算法竞赛获奖等）
+3. 大四阶段必须包含3-6家适配入职企业的推荐
+4. 所有内容必须贴合「{target_role}」这个职业方向，具有针对性和可执行性
+5. 考虑到用户当前是「{current_grade}」，请在ai_comment中给出当前阶段的重点建议
+
+请生成规划内容。"""
+
+    try:
+        # 调用 Deepseek API 生成规划内容
+        ai_response = _deepseek_json(system_prompt, user_prompt)
+        
+        # 解析 AI 返回的数据
+        stages_data = ai_response.get("stages", [])
+        ai_comment = ai_response.get("ai_comment", f"基于{current_grade}和{target_role}方向，为你规划了从大一到大四的完整成长路径。")
+        
+        # 验证数据完整性
+        if not stages_data or len(stages_data) < 4:
+            print(f"⚠️ AI 返回的阶段数据不完整，共 {len(stages_data)} 个阶段")
+        
+        # 定义年级索引（用于判断当前进度）
+        grade_index = {"大一": 0, "大二": 1, "大三": 2, "大四": 3}.get(current_grade, 1)
+        grade_list = ["大一", "大二", "大三", "大四"]
+        
+        # 构建里程碑数据，确保格式与现有结构完全一致
+        stages = []
+        for idx, grade in enumerate(grade_list):
+            # 从 AI 返回的数据中查找对应年级的规划
+            stage_data = None
+            for s in stages_data:
+                if s.get("grade") == grade:
+                    stage_data = s
+                    break
+            
+            # 如果 AI 没有返回该年级的数据，使用默认值（降级处理）
+            if not stage_data:
+                print(f"⚠️ AI 未返回 {grade} 阶段数据，使用默认模板")
+                stage_data = {
+                    "title": f"{grade}阶段规划",
+                    "content": f"根据{target_role}方向，制定{grade}阶段的学习和实践计划。建议重点关注专业课程学习、项目实践和技能提升。",
+                    "resources": ["相关学习资源", "在线课程平台", "技术社区"],
+                    "certificates": ["相关证书"],
+                    "recommended_companies": []
+                }
+            
+            # 确保必要字段存在
+            if not stage_data.get("title"):
+                stage_data["title"] = f"{grade}阶段规划"
+            if not stage_data.get("content"):
+                stage_data["content"] = f"根据{target_role}方向，制定{grade}阶段的学习和实践计划。"
+            if not stage_data.get("resources"):
+                stage_data["resources"] = ["相关学习资源"]
+            if not stage_data.get("certificates"):
+                stage_data["certificates"] = ["相关证书"]
+            if grade != "大四":
+                stage_data["recommended_companies"] = []
+            
+            # 判断状态：已完成、进行中、等待中
+            if idx < grade_index:
+                status = "done"
+                color = "#67C23A"  # 绿色
+                icon = "CircleCheck"
+            elif idx == grade_index:
+                status = "process"
+                color = "#409EFF"  # 蓝色
+                icon = "Loading"
+            else:
+                status = "wait"
+                color = "#909399"  # 灰色
+                icon = ""
+            
+            # 构建里程碑数据（格式与现有结构完全一致）
+            milestone = {
+                "time": grade,
+                "title": stage_data.get("title", f"{grade}阶段规划"),
+                "content": stage_data.get("content", ""),
+                "status": status,
+                "color": color,
+                "icon": icon,
+                "resources": stage_data.get("resources", []),
+                "certificates": stage_data.get("certificates", []),
+                "timestamp": f"{grade}学年"
+            }
+            
+            # 如果是大四阶段，添加推荐企业
+            if grade == "大四" and stage_data.get("recommended_companies"):
+                milestone["recommended_companies"] = stage_data.get("recommended_companies", [])
+            
+            stages.append(milestone)
+        
+        return {
+            "stages": stages,
+            "ai_comment": ai_comment
+        }
+        
+    except Exception as e:
+        print(f"❌ AI 生成生涯规划失败: {e}")
+        # 如果 AI 生成失败，返回默认规划（降级处理）
+        raise HTTPException(status_code=500, detail=f"AI 生成生涯规划失败: {str(e)}")
+
 @app.post("/api/generate_roadmap")
 def generate_roadmap(req: RoadmapRequest):
-    time.sleep(1)
-    # 雷达图逻辑
+    """
+    AI 驱动的生涯路径规划生成
+    使用 Deepseek API 基于用户输入的年级和意向方向，生成个性化的关键里程碑规划
+    """
+    # 雷达图逻辑（保持不变）
     radar_indicators = [
         {"name": "基础知识", "max": 100}, {"name": "实战能力", "max": 100},
         {"name": "算法思维", "max": 100}, {"name": "工程素养", "max": 100},
@@ -389,17 +567,106 @@ def generate_roadmap(req: RoadmapRequest):
     base_score = 60 if "大一" in req.current_grade else (70 if "大二" in req.current_grade else 80)
     current_scores = [base_score + random.randint(-10, 10) for _ in range(5)]
 
-    # 时间轴逻辑
-    stages = [
-        {"time": "大一", "title": "夯实基础", "content": "学习 C++/Python，刷 LeetCode 100题", "status": "done", "color": "#67C23A"},
-        {"time": "大二", "title": "项目实战", "content": "参与一个完整的 Web 全栈项目", "status": "process", "color": "#409EFF"},
-        {"time": "大三", "title": "实习冲刺", "content": "准备简历，投递日常实习", "status": "wait", "color": "#909399"},
-        {"time": "大四", "title": "秋招定局", "content": "查漏补缺，冲击 SP Offer", "status": "wait", "color": "#909399"}
-    ]
+    # ==========================================
+    # 使用 AI 生成关键里程碑规划（替换原有固定模板）
+    # ==========================================
+    try:
+        ai_result = _generate_roadmap_with_ai(req.current_grade, req.target_role)
+        stages = ai_result["stages"]
+        ai_comment = ai_result["ai_comment"]
+    except Exception as e:
+        # 如果 AI 生成失败，使用降级方案（保留原有模板逻辑作为备选）
+        print(f"⚠️ AI 生成失败，使用降级方案: {e}")
+        grade = req.current_grade
+        direction = req.target_role
+        grade_index = {"大一": 0, "大二": 1, "大三": 2, "大四": 3}.get(grade, 1)
+        
+        # 降级方案：使用简化的固定模板（仅作为备选，正常情况下不会执行）
+        direction_templates = {
+            "算法": {
+                "大一": {
+                    "title": "夯实编程基础",
+                    "content": "系统学习 C++/Python 基础语法，完成数据结构与算法课程，开始刷 LeetCode（目标：100题）",
+                    "resources": ["《算法导论》", "LeetCode 刷题计划", "Python 基础教程"],
+                    "certificates": ["计算机二级证书", "Python 编程认证"]
+                },
+                "大二": {
+                    "title": "算法竞赛与深度学习入门",
+                    "content": "参加 ACM/蓝桥杯等算法竞赛，学习机器学习基础（线性代数、概率论），完成第一个深度学习项目（如手写数字识别）",
+                    "resources": ["《机器学习》- 周志华", "Kaggle 竞赛", "PyTorch 官方教程"],
+                    "certificates": ["算法竞赛获奖证书", "Kaggle 竞赛证书"]
+                },
+                "大三": {
+                    "title": "算法实习与项目实战",
+                    "content": "投递算法实习岗位（如字节跳动、腾讯 AI Lab），参与 NLP/CV 相关项目，发表技术博客或论文",
+                    "resources": ["《深度学习》- Ian Goodfellow", "GitHub 开源项目", "技术博客平台"],
+                    "certificates": ["大厂算法实习证明", "论文发表/技术博客认证"]
+                },
+                "大四": {
+                    "title": "秋招冲刺与职业定位",
+                    "content": "准备算法工程师秋招（刷题 300+，准备系统设计），完善简历和作品集，目标企业：字节、阿里、腾讯、百度等",
+                    "resources": ["《剑指 Offer》", "系统设计面试指南", "算法面试真题"],
+                    "certificates": ["算法工程师 Offer", "技术专家认证"],
+                    "recommended_companies": ["字节跳动", "阿里巴巴", "腾讯", "百度", "美团", "滴滴"]
+                }
+            }
+        }
+        
+        # 获取对应方向的模板，如果没有则使用算法模板
+        template = direction_templates.get(direction, direction_templates.get("算法", {}))
+        
+        # 生成四个阶段的里程碑
+        stages = []
+        grade_list = ["大一", "大二", "大三", "大四"]
+        
+        for idx, g in enumerate(grade_list):
+            stage_data = template.get(g, {
+                "title": f"{g}阶段规划",
+                "content": f"根据{direction}方向，制定{g}阶段的学习和实践计划",
+                "resources": ["相关学习资源"],
+                "certificates": ["相关证书"]
+            })
+            
+            # 判断状态：已完成、进行中、等待中
+            if idx < grade_index:
+                status = "done"
+                color = "#67C23A"  # 绿色
+                icon = "CircleCheck"
+            elif idx == grade_index:
+                status = "process"
+                color = "#409EFF"  # 蓝色
+                icon = "Loading"
+            else:
+                status = "wait"
+                color = "#909399"  # 灰色
+                icon = ""
+            
+            # 构建里程碑数据
+            milestone = {
+                "time": g,
+                "title": stage_data["title"],
+                "content": stage_data["content"],
+                "status": status,
+                "color": color,
+                "icon": icon,
+                "resources": stage_data.get("resources", []),
+                "certificates": stage_data.get("certificates", []),
+                "timestamp": f"{g}学年"
+            }
+            
+            # 如果是大四阶段，添加推荐企业
+            if g == "大四" and "recommended_companies" in stage_data:
+                milestone["recommended_companies"] = stage_data["recommended_companies"]
+            
+            stages.append(milestone)
+        
+        # 生成 AI 评论
+        ai_comment = f"基于{grade}和{direction}方向，为你规划了从大一到大四的完整成长路径。当前处于{grade}阶段，建议重点关注{stages[grade_index]['title']}，为下一阶段做好准备。"
     
+    # 返回统一格式的数据（无论 AI 生成成功还是降级方案）
     return {
         "radar_chart": {"indicators": radar_indicators, "values": current_scores},
-        "ai_comment": f"基于{req.current_grade}的你，建议重点加强实战能力。",
+        "ai_comment": ai_comment,
         "roadmap": stages
     }
 

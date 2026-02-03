@@ -957,19 +957,41 @@ onBeforeUnmount(() => {
             >
               <div class="timeline-box" :class="{'active-node': item.status === 'process'}">
                 <div class="node-header">
-                  <span class="time-tag">{{ item.timestamp }}</span>
+                  <span class="time-tag">{{ item.time || item.timestamp }}</span>
                   <span class="node-title">{{ item.title }}</span>
                   <el-tag v-if="item.status === 'done'" type="success" size="small" effect="dark">已完成</el-tag>
                   <el-tag v-else-if="item.status === 'process'" type="primary" size="small" effect="dark">进行中</el-tag>
+                  <el-tag v-else type="info" size="small" effect="dark">待开始</el-tag>
                 </div>
                 
                 <p class="node-content">{{ item.content }}</p>
                 
+                <!-- 推荐资源 -->
                 <div class="node-resources" v-if="item.resources && item.resources.length">
                   <div class="res-label">📚 推荐资源：</div>
                   <div class="res-chips">
                     <span v-for="(r, idx) in item.resources" :key="idx" class="res-chip">
                       {{ r }}
+                    </span>
+                  </div>
+                </div>
+                
+                <!-- 荣誉/证书 -->
+                <div class="node-certificates" v-if="item.certificates && item.certificates.length">
+                  <div class="cert-label">🏆 目标证书/荣誉：</div>
+                  <div class="cert-chips">
+                    <span v-for="(c, idx) in item.certificates" :key="idx" class="cert-chip">
+                      {{ c }}
+                    </span>
+                  </div>
+                </div>
+                
+                <!-- 推荐企业（仅大四阶段显示） -->
+                <div class="node-companies" v-if="item.recommended_companies && item.recommended_companies.length">
+                  <div class="company-label">💼 适配入职企业：</div>
+                  <div class="company-chips">
+                    <span v-for="(company, idx) in item.recommended_companies" :key="idx" class="company-chip">
+                      {{ company }}
                     </span>
                   </div>
                 </div>
@@ -1718,12 +1740,55 @@ onBeforeUnmount(() => {
 .node-title { font-weight: bold; color: #303133; font-size: 15px; }
 .node-content { color: #606266; font-size: 14px; margin-bottom: 10px; }
 
-.node-resources { display: flex; align-items: center; gap: 10px; border-top: 1px dashed #e4e7ed; padding-top: 8px; }
-.res-label { font-size: 12px; color: #909399; }
+.node-resources { 
+  display: flex; 
+  align-items: flex-start; 
+  gap: 10px; 
+  border-top: 1px dashed #e4e7ed; 
+  padding-top: 10px; 
+  margin-top: 10px;
+  flex-direction: column;
+}
+.res-label { font-size: 12px; color: #909399; font-weight: 600; margin-bottom: 6px; }
 .res-chips { display: flex; gap: 8px; flex-wrap: wrap; }
 .res-chip {
-  font-size: 12px; color: #606266; background: white; border: 1px solid #dcdfe6;
-  padding: 2px 8px; border-radius: 12px;
+  font-size: 12px; color: #606266; background: #f0f9ff; border: 1px solid #b3d8ff;
+  padding: 4px 10px; border-radius: 12px;
+}
+
+/* 证书样式 */
+.node-certificates {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-top: 1px dashed #e4e7ed;
+  padding-top: 10px;
+  margin-top: 10px;
+  flex-direction: column;
+}
+.cert-label { font-size: 12px; color: #909399; font-weight: 600; margin-bottom: 6px; }
+.cert-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.cert-chip {
+  font-size: 12px; color: #e6a23c; background: #fdf6ec; border: 1px solid #f5dab1;
+  padding: 4px 10px; border-radius: 12px;
+}
+
+/* 推荐企业样式 */
+.node-companies {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-top: 1px dashed #e4e7ed;
+  padding-top: 10px;
+  margin-top: 10px;
+  flex-direction: column;
+}
+.company-label { font-size: 12px; color: #909399; font-weight: 600; margin-bottom: 6px; }
+.company-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.company-chip {
+  font-size: 12px; color: #67c23a; background: #f0f9eb; border: 1px solid #c2e7b0;
+  padding: 4px 10px; border-radius: 12px;
+  font-weight: 500;
 }
 
 .empty-state-box { text-align: center; padding: 60px; color: #909399; }

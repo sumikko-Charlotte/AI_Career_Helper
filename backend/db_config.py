@@ -3,7 +3,7 @@
 腾讯云 TDSQL-C 数据库配置文件
 包含数据库连接配置、连接函数和核心查询函数
 """
-
+import os
 import pymysql
 from pymysql import OperationalError
 from typing import List, Dict, Optional, Tuple
@@ -15,7 +15,7 @@ DB_CONFIG = {
     "host": "bj-cynosdbmysql-grp-ovt0aqds.sql.tencentcdb.com",
     "port": 20603,
     "user": "root",
-    "password": "AIcareer@helper123",  # ⚠️ 仅需替换这1个参数
+    "password": "AIcareer@helper123",    # ⚠️ 仅需替换这1个参数
     "database": "ai_career_helper",
     "charset": "utf8mb4",
     "cursorclass": pymysql.cursors.DictCursor
