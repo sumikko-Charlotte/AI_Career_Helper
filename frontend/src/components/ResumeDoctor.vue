@@ -313,11 +313,21 @@ const copyContent = async () => {
       </div>
     </div>
 
+    <!--
+      VIP 模式：内嵌加载本地 Streamlit（AI简历医生）
+      说明：
+      - 使用 embed=true 更贴近 Streamlit 的嵌入展示效果
+      - 使用 :key 让切换到 VIP 时强制刷新 iframe，避免缓存/空白
+    -->
     <div v-show="currentMode === 'vip'" class="vip-container">
       <iframe
-        src="http://localhost:8501/?embed=true"
+        :key="currentMode"
+        src="http://localhost:8502/?embed=true"
         class="streamlit-iframe"
-        title="AI Resume VIP"
+        title="AI简历医生（可运行版）"
+        loading="lazy"
+        referrerpolicy="no-referrer"
+        allow="clipboard-read; clipboard-write"
       ></iframe>
     </div>
   </div>

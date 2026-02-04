@@ -11,7 +11,7 @@ import MarkdownIt from 'markdown-it'
 import {
   Monitor, ChatDotRound, DocumentChecked, User, Odometer, MagicStick,
   Calendar, SwitchButton, CircleCheck, VideoPlay, Trophy, Loading, Compass, Aim,
-  Microphone, Clock, Collection
+  Microphone, Clock, Collection, InfoFilled
 } from '@element-plus/icons-vue'
 
 // 引入组件
@@ -73,10 +73,24 @@ const agentCalling = ref(false)
 const chatHistory = ref([
   {
     role: 'ai',
-    content: '你好，我是 AI 面试官。我们从工程化开始：请你简述一下你对 RESTful API 的理解，并说明你会如何做版本管理与错误码设计。'
+    content: '你好，我是AI模拟面试官😊'
   }
 ])
 const jobsData = ref([])
+// --- 模拟面试优化：加载状态、打字机效果、缓存 ---
+const aiThinkingMsgId = ref(null) // 当前正在思考的消息ID（用于显示加载状态）
+const typingTimer = ref(null) // 打字机效果定时器
+const CACHE_KEY = 'interview_cache'
+const CACHE_EXPIRE_DAYS = 7
+const TIMEOUT_MS = 15000 // 15秒超时（用于最终失败判断）
+const AI_TIMEOUT_MS = 8000 // 8秒超时（用于触发模板降级）
+const MAX_RETRY = 1 // 最多重试1次
+const useTemplateMode = ref(false) // 用户主动选择模板模式
+const templateQuestionIndex = ref(0) // 模板问题索引（用于轮次逻辑）
+// --- 模拟面试：引导环节状态 ---
+const isGuidingPhase = ref(true) // 是否在引导环节（true=引导环节，false=正式面试）
+const guideRoundCount = ref(0) // 引导环节已完成的轮次（3-5轮后自动进入正式面试）
+const guideMaxRounds = 5 // 引导环节最大轮次
 
 // --- 生涯规划变量 ---
 const roadmapGrade = ref('大一')
@@ -109,6 +123,19 @@ let sandboxPending = false
 const radarValues = reactive({
   gpa: 85, project: 70, intern: 60, competition: 80, english: 90, leader: 75
 })
+
+// --- 竞争力沙盘：表单输入（替换原滑块，但不改变整体布局） ---
+const sandboxForm = reactive({
+  gpa: '',
+  project: '',
+  intern: '',
+  competition: '',
+  english: '',
+  leader: ''
+})
+const sandboxReportLoading = ref(false)
+const sandboxReportMarkdown = ref('')
+const sandboxReportHtml = computed(() => (sandboxReportMarkdown.value ? md.render(sandboxReportMarkdown.value) : ''))
 
 // --- 静态选项数据 (保留原样) ---
 const customColors = [
@@ -267,6 +294,558 @@ const scrollChatToBottom = () => {
   if (el) el.scrollTop = el.scrollHeight
 }
 
+// --- 模拟面试：新手引导上下文（仅用于对话引导，不影响既有功能） ---
+const interviewGuide = reactive({
+  started: false,
+  // 用于让 AI 知道面试方向（用户回答后会自动并入上下文发给 AI）
+  targetRole: '',
+  grade: '',
+  targetType: '', // 实习/全职/未说明
+  // 模板对话状态（用于保持连贯性）
+  templateRole: '', // 当前选择的岗位模板
+  templateIndex: 0, // 当前岗位模板的问题索引
+  templateStage: 'common', // 当前阶段：common（通用引导）或具体岗位
+  // 引导环节状态
+  guideIndex: 0 // 引导环节模板索引
+})
+
+const _stripMarkdownToText = (mdText) => {
+  if (!mdText) return ''
+  return String(mdText)
+    .replace(/```[\s\S]*?```/g, '') // 去掉代码块
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+    .replace(/\[[^\]]*\]\([^)]+\)/g, '$1')
+    .replace(/[*_>#-]{1,3}\s?/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+const _defaultInterviewTips = (question) => {
+  const q = String(question || '')
+  // 只给“逻辑框架”，避免给完整答案模板
+  if (/项目|经历|挑战|难点|最难|你做了什么/i.test(q)) {
+    return [
+      '用 STAR 拆解：背景(S)→任务(T)→行动(A)→结果(R)。',
+      '行动(A)强调“你做了什么、为什么这么做、你做了哪些取舍”。',
+      '结果(R)尽量量化：指标/规模/时延/成本/效率/稳定性。',
+    ].join('\n')
+  }
+  if (/缺点|不足|失败|挫折/i.test(q)) {
+    return [
+      '先给结论：选择一个“可改进且已在改善”的不足点。',
+      '再讲证据：你如何发现问题（反馈/数据/复盘）。',
+      '最后讲改进：采取了哪些行动、效果如何、后续计划。',
+    ].join('\n')
+  }
+  if (/岗位|方向|为什么|动机/i.test(q)) {
+    return [
+      '一句话定位目标岗位与原因（兴趣/能力/经历匹配）。',
+      '用 2-3 条证据支撑：项目/课程/实习/竞赛/成果。',
+      '最后给“近期目标”：实习/校招的时间与行动。',
+    ].join('\n')
+  }
+  return [
+    '结构建议：先结论→再分点→最后补证据。',
+    '每点尽量带"证据"：数据/例子/对比/结果。',
+    '不确定时可以澄清问题边界（场景/指标/约束）。',
+  ].join('\n')
+}
+
+// --- 模拟面试：引导环节模板库（降级备用方案，3-5轮通用引导） ---
+const guideTemplates = [
+  {
+    user_input: /你好|开始|体验|面试/,
+    template_reply: '你好呀！我是你的专属模拟面试官😊 在正式面试前，我们先轻松聊一聊，帮你梳理一下自己的情况～可以先简单说说你的学历阶段和想面试的岗位吗？',
+    tip: '回答学历和岗位时，可以简洁明了：例如"我是大二，想体验前端工程师岗位"～'
+  },
+  {
+    user_input: /(大一|大二|大三|大四|研一|研二|研三).*(前端|算法|后端|Java|Python|全栈)/,
+    template_reply: '很好！那接下来聊聊你的经历～你目前有相关的项目经历、实习经历或者竞赛经历吗？有的话可以简单说说，没有也没关系，我们可以聊聊学习经历～',
+    tip: '回答经历类问题时，可以用「一句话概括经历 + 核心做了什么 + 收获了什么」的逻辑，简洁明了哦～'
+  },
+  {
+    user_input: /(项目|实习|竞赛|经历|做过|学过)/,
+    template_reply: '听起来不错！那再问一个问题：你为什么想面试这个岗位呀？是对这个方向感兴趣，还是有其他的规划？',
+    tip: '回答求职动机时，可以结合「岗位特点 + 自身兴趣/优势」来答，会更贴合HR的期待～'
+  },
+  {
+    user_input: /(兴趣|喜欢|规划|目标|原因|为什么)/,
+    template_reply: '目标很清晰！最后一个问题：如果拿到这个岗位的offer，你未来1-2年有什么样的学习和工作规划呢？',
+    tip: '回答职业规划时，可以分短期（1年内）和中期（1-2年）来谈，结合岗位发展方向，会更具体哦～'
+  },
+  {
+    user_input: /(规划|计划|目标|未来|学习|工作)/,
+    template_reply: '好的，我大概了解你的情况啦！那我们现在开始正式的岗位面试吧，问题会贴合你刚才说的信息，不用紧张，大胆回答就好～',
+    tip: '' // 最后一轮不需要提示，直接进入正式面试
+  }
+]
+
+// --- 模拟面试：多岗位、全学历适配模板库（降级备用方案） ---
+const interviewTemplates = {
+  common: [
+    {
+      user_input: '你好',
+      template_reply: '你好呀！我是你的专属模拟面试官😊 先轻松聊一聊～你想体验哪个岗位的面试呀？可选：前端工程师、算法工程师、全栈后端工程师、Java开发、Python开发'
+    },
+    {
+      user_input: '我还没想好选哪个岗位',
+      template_reply: '没关系～那你可以先告诉我你的学历阶段吗？比如大一大二/大三大四/研究生，我可以给你推荐适配的岗位体验哦！'
+    },
+    {
+      user_input: /我是大一大二|大一大二|大一|大二/,
+      template_reply: '超棒的！大一大二就开始准备面试啦～那我推荐你先体验基础版的Python开发或前端工程师哦，问题会偏基础，主打熟悉面试流程，要选其中一个吗？'
+    },
+    {
+      user_input: /我是大三大四|大三大四|大三|大四.*找实习|找实习.*大三大四/,
+      template_reply: '加油呀！实习面试会侧重基础+项目落地能力～那你确定要体验的岗位是？前端/算法/全栈后端/Java/Python'
+    },
+    {
+      user_input: /我是研究生|研究生|研一|研二|研三.*找全职|找全职.*研究生|找实习.*研究生/,
+      template_reply: '研究生面试会侧重专业深度+科研/项目成果哦～那你想体验的目标岗位是？算法/全栈后端/Java/Python（这些岗位更适配研究生求职哦）'
+    },
+    {
+      user_input: /好的.*就选|选这个|确定.*岗位|就选.*岗位/,
+      template_reply: '没问题！那我们正式开始面试啦～首先第一个基础问题：请做一个1-2分钟的自我介绍，包括你的学历、专业和相关的学习/项目/科研经历哦～'
+    },
+    {
+      user_input: /我叫|来自|学历|专业|做过|学过/,
+      template_reply: '非常清晰的自我介绍！接下来我们进入岗位相关的问题环节，问题会贴合你的学历阶段，不用紧张，大胆回答就好～'
+    },
+    {
+      user_input: /没有.*项目|没有.*科研|没有.*经历/,
+      template_reply: '没关系的！大一大二/零基础的同学都容易遇到这个问题～那我们重点聊聊你学过的核心知识点吧，这也是面试中很看重的部分～'
+    }
+  ],
+  '前端工程师': [
+    {
+      user_input: /前端工程师|前端/,
+      template_reply: '好的！那我们开始前端工程师的模拟面试～先问一个基础问题：你了解HTML、CSS、JavaScript的核心区别吗？分别说说它们的作用～'
+    },
+    {
+      user_input: /HTML.*结构|CSS.*样式|JS.*交互|JavaScript.*交互/,
+      template_reply: '回答很准确！那再问一个：你用过哪些前端框架？比如Vue/React/Angular，简单说说你最熟悉的那个框架的核心特点～'
+    },
+    {
+      user_input: /Vue|React|Angular|双向数据绑定|组件化/,
+      template_reply: '很棒！那你在使用Vue的时候，有没有遇到过跨域问题？你是怎么解决的？'
+    },
+    {
+      user_input: /跨域|代理|JSONP|CORS/,
+      template_reply: '方法很实用！那再问一个：你知道什么是虚拟DOM吗？它的作用是什么？'
+    },
+    {
+      user_input: /不知道.*虚拟DOM|不太清楚.*虚拟DOM|虚拟DOM/,
+      template_reply: '没关系，这个是前端中级考点～虚拟DOM是真实DOM的抽象副本，作用是减少真实DOM的操作，提升页面渲染效率，记下来以后学习哦～那我们换个基础问题：CSS中Flex布局的核心属性有哪些？'
+    },
+    {
+      user_input: /大一大二.*没学过.*框架|没学过.*框架/,
+      template_reply: '没问题！那我们聊基础～CSS中如何实现元素的水平垂直居中？说说你知道的方法～'
+    },
+    {
+      user_input: /居中|margin.*auto|定位.*transform|Flex布局/,
+      template_reply: '方法很全面！基础很扎实～那JS中let/var/const的区别是什么？这个是面试必考点哦～'
+    },
+    {
+      user_input: /面试结束|结束吧/,
+      template_reply: '好的！今天的前端工程师模拟面试就到这里啦～如果是大一大二，建议继续夯实HTML/CSS/JS基础；如果是找实习，建议多做一个完整的前端项目（比如博客/商城），加油！💪'
+    }
+  ],
+  '算法工程师': [
+    {
+      user_input: /算法工程师|算法/,
+      template_reply: '好的！算法工程师面试会侧重数据结构+算法+模型基础～第一个问题：你最熟悉的排序算法有哪些？说说快速排序的核心思路～'
+    },
+    {
+      user_input: /快排|冒泡|归并|分治|基准值/,
+      template_reply: '核心思路很准确！那快排的时间复杂度和空间复杂度分别是多少？最好/最坏情况呢？'
+    },
+    {
+      user_input: /时间复杂度|O\(nlogn\)|O\(n²\)|空间复杂度/,
+      template_reply: '回答完美！那再问一个：你了解什么是动态规划？它的核心解题步骤是什么？'
+    },
+    {
+      user_input: /动态规划|重叠子问题|状态定义|状态转移/,
+      template_reply: '很棒！那你用过哪些机器学习模型？比如线性回归/逻辑回归/决策树，说说其中一个的适用场景～'
+    },
+    {
+      user_input: /研究生.*模型|科研.*模型|机器学习模型/,
+      template_reply: '太优秀了！那你在做这个模型的时候，遇到过过拟合问题吗？你是怎么解决的？'
+    },
+    {
+      user_input: /大三大四.*没做过.*算法|没做过.*算法项目/,
+      template_reply: '没关系！那我们聊基础～数组和链表的核心区别是什么？分别适用于什么场景？'
+    },
+    {
+      user_input: /不知道.*动态规划|没学过.*机器学习/,
+      template_reply: '没关系～算法工程师对基础要求较高，建议先从数据结构（数组/链表/树）和基础算法（排序/查找）学起，研究生同学可以再补充机器学习/深度学习基础哦～那我们换个问题：二叉树的前序遍历有哪些方法？'
+    },
+    {
+      user_input: /面试结束|结束吧/,
+      template_reply: '好的！今天的算法工程师模拟面试就到这里啦～算法学习重在刷题+理解，建议多刷LeetCode（简单/中等题），结合项目/科研落地，加油！💪'
+    }
+  ],
+  '全栈后端工程师': [
+    {
+      user_input: /全栈后端|全栈|后端工程师/,
+      template_reply: '好的！全栈后端面试会侧重后端基础+前后端交互+项目架构～第一个问题：你了解什么是RESTful API？它的核心设计原则是什么？'
+    },
+    {
+      user_input: /RESTful|接口设计|资源导向|HTTP方法|GET|POST|PUT|DELETE/,
+      template_reply: '回答很专业！那你用过哪些后端框架？比如SpringBoot/Django/Flask，说说你最熟悉的框架的核心优势～'
+    },
+    {
+      user_input: /SpringBoot|Django|Flask|自动配置|快速开发/,
+      template_reply: '很棒！那你在项目中用到过数据库吗？比如MySQL，说说你知道的索引类型和作用～'
+    },
+    {
+      user_input: /MySQL|索引|主键索引|普通索引|联合索引|查询效率/,
+      template_reply: '非常准确！那数据库中什么是事务？ACID特性分别指什么？'
+    },
+    {
+      user_input: /大一大二.*没学过.*后端框架|没学过后端框架/,
+      template_reply: '没问题！那我们聊基础～HTTP协议的常用状态码有哪些？比如200/404/500，分别代表什么？'
+    },
+    {
+      user_input: /状态码|200|404|500|302|401/,
+      template_reply: '基础很扎实！那再问一个：什么是Cookie和Session？它们的区别是什么？'
+    },
+    {
+      user_input: /不知道.*RESTful|没接触过.*数据库/,
+      template_reply: '没关系～全栈后端需要兼顾前后端，建议先从一门后端语言（Java/Python）+ 基础数据库（MySQL）学起，再接触框架哦～那我们换个问题：GET和POST请求的核心区别是什么？'
+    },
+    {
+      user_input: /面试结束|结束吧/,
+      template_reply: '好的！今天的全栈后端工程师模拟面试就到这里啦～全栈开发重在"全"+"深"，建议多做一个前后端联动的项目（比如管理系统），夯实基础+了解架构，加油！💪'
+    }
+  ],
+  'Java开发工程师': [
+    {
+      user_input: /Java开发|Java工程师|Java/,
+      template_reply: '好的！Java开发面试核心侧重基础+JVM+框架+并发～第一个问题：Java中的面向对象三大特性是什么？分别说说含义～'
+    },
+    {
+      user_input: /封装|继承|多态|面向对象/,
+      template_reply: '回答很准确！那再问一个：Java中String、StringBuffer、StringBuilder的区别是什么？'
+    },
+    {
+      user_input: /String|StringBuffer|StringBuilder|不可变|线程安全/,
+      template_reply: '很棒！那你了解JVM的内存结构吗？说说堆、栈、方法区的作用～'
+    },
+    {
+      user_input: /JVM|堆|栈|方法区|内存结构/,
+      template_reply: '非常专业！那Java中的线程池有什么作用？核心参数有哪些？'
+    },
+    {
+      user_input: /大三大四.*找Java实习|找Java实习.*没接触过JVM/,
+      template_reply: '没关系！实习面试侧重基础+框架基础～那你用过SpringBoot吗？说说它的自动配置原理？'
+    },
+    {
+      user_input: /大一大二.*刚学Java|刚学Java/,
+      template_reply: '没问题！那我们聊基础～Java中int和Integer的区别是什么？什么是自动装箱和拆箱？'
+    },
+    {
+      user_input: /不知道.*线程池|没学过JVM/,
+      template_reply: '没关系～JVM和并发是Java高级考点，找实习可以先夯实基础（面向对象/集合/IO），再接触框架和JVM哦～那我们换个问题：Java中的集合框架有哪些？比如List/Set/Map，说说ArrayList和LinkedList的区别～'
+    },
+    {
+      user_input: /面试结束|结束吧/,
+      template_reply: '好的！今天的Java开发工程师模拟面试就到这里啦～Java学习重在基础扎实，建议多刷Java基础题，结合SpringBoot做实战项目，加油！💪'
+    }
+  ],
+  'Python开发工程师': [
+    {
+      user_input: /Python开发|Python工程师|Python/,
+      template_reply: '好的！Python开发面试侧重基础+库/框架+实战～第一个问题：Python中的列表（list）和元组（tuple）的核心区别是什么？'
+    },
+    {
+      user_input: /list|tuple|可变|不可变/,
+      template_reply: '回答很准确！那再问一个：Python中的装饰器是什么？它的作用是什么？'
+    },
+    {
+      user_input: /装饰器|增强函数|开闭原则/,
+      template_reply: '很棒！那你用过哪些Python框架？比如Django/Flask/FastAPI，说说它们的适用场景～'
+    },
+    {
+      user_input: /Django|Flask|FastAPI|轻量级|全栈式/,
+      template_reply: '非常专业！那Python中的GIL锁是什么？它对多线程有什么影响？'
+    },
+    {
+      user_input: /大一大二.*刚学Python|刚学Python/,
+      template_reply: '没问题！那我们聊基础～Python中的if __name__ == \'__main__\'的作用是什么？'
+    },
+    {
+      user_input: /__name__|__main__|直接运行|导入/,
+      template_reply: '基础很扎实！那再问一个：Python中的字典（dict）是什么数据结构？它的查询效率为什么高？'
+    },
+    {
+      user_input: /不知道.*装饰器|不知道.*GIL/,
+      template_reply: '没关系～装饰器和GIL是Python中级考点，零基础可以先夯实基础（数据类型/流程控制/函数），再接触进阶知识点哦～那我们换个问题：Python中如何实现列表去重？说说你知道的方法～'
+    },
+    {
+      user_input: /面试结束|结束吧/,
+      template_reply: '好的！今天的Python开发工程师模拟面试就到这里啦～Python上手快，建议结合实战（爬虫/数据分析/小项目）巩固，加油！💪'
+    }
+  ]
+}
+
+// 获取引导环节模板回复（降级备用方案）
+const getGuideTemplateResponse = (userMsg) => {
+  const msg = String(userMsg || '').trim()
+  const currentIndex = interviewGuide.guideIndex
+  
+  // 如果已到最后一轮，返回过渡话术
+  if (currentIndex >= guideTemplates.length - 1) {
+    const lastTemplate = guideTemplates[guideTemplates.length - 1]
+    return {
+      reply: lastTemplate.template_reply,
+      question: '',
+      tips: '',
+      tip: '', // 最后一轮不需要提示
+      isTemplate: true,
+      isGuide: true
+    }
+  }
+  
+  // 尝试匹配当前索引的模板
+  const currentTemplate = guideTemplates[currentIndex]
+  const inputPattern = currentTemplate.user_input
+  let isMatch = false
+  
+  if (typeof inputPattern === 'string') {
+    isMatch = msg.toLowerCase().includes(inputPattern.toLowerCase())
+  } else if (inputPattern instanceof RegExp) {
+    isMatch = inputPattern.test(msg)
+  }
+  
+  // 如果匹配成功，返回下一个模板；否则返回当前模板
+  if (isMatch && currentIndex < guideTemplates.length - 1) {
+    interviewGuide.guideIndex = currentIndex + 1
+    const nextTemplate = guideTemplates[currentIndex + 1]
+    return {
+      reply: nextTemplate.template_reply,
+      question: '',
+      tips: '',
+      tip: nextTemplate.tip || '',
+      isTemplate: true,
+      isGuide: true
+    }
+  } else {
+    // 未匹配或已到最后，返回当前模板
+    return {
+      reply: currentTemplate.template_reply,
+      question: '',
+      tips: '',
+      tip: currentTemplate.tip || '',
+      isTemplate: true,
+      isGuide: true
+    }
+  }
+}
+
+// 获取模板回复（多岗位、全学历适配，基于用户输入和岗位匹配）
+const getTemplateResponse = (userMsg) => {
+  const msg = String(userMsg || '').trim()
+  const msgLower = msg.toLowerCase()
+  
+  // 1. 确定当前使用的模板库（common 或 具体岗位）
+  let currentTemplates = interviewTemplates.common
+  let currentStage = interviewGuide.templateStage || 'common'
+  
+  // 2. 检测用户是否选择了岗位（从用户输入或 interviewGuide 中获取）
+  const roleKeywords = {
+    '前端工程师': /前端工程师|前端/,
+    '算法工程师': /算法工程师|算法/,
+    '全栈后端工程师': /全栈后端|全栈|后端工程师/,
+    'Java开发工程师': /Java开发|Java工程师|Java/,
+    'Python开发工程师': /Python开发|Python工程师|Python/
+  }
+  
+  // 如果用户输入中包含岗位关键词，切换到对应岗位模板
+  for (const [role, pattern] of Object.entries(roleKeywords)) {
+    if (pattern.test(msg)) {
+      interviewGuide.templateRole = role
+      interviewGuide.templateStage = role
+      interviewGuide.templateIndex = 0
+      currentTemplates = interviewTemplates[role] || interviewTemplates.common
+      currentStage = role
+      break
+    }
+  }
+  
+  // 如果 interviewGuide 中已有岗位信息，使用对应岗位模板
+  if (!currentTemplates || currentTemplates === interviewTemplates.common) {
+    if (interviewGuide.templateRole && interviewTemplates[interviewGuide.templateRole]) {
+      currentTemplates = interviewTemplates[interviewGuide.templateRole]
+      currentStage = interviewGuide.templateRole
+    }
+  }
+  
+  // 3. 在当前模板库中匹配用户输入
+  let matchedTemplate = null
+  let matchedIndex = -1
+  
+  for (let i = 0; i < currentTemplates.length; i++) {
+    const template = currentTemplates[i]
+    const inputPattern = template.user_input
+    
+    let isMatch = false
+    if (typeof inputPattern === 'string') {
+      isMatch = msgLower.includes(inputPattern.toLowerCase())
+    } else if (inputPattern instanceof RegExp) {
+      isMatch = inputPattern.test(msg)
+    }
+    
+    if (isMatch) {
+      matchedTemplate = template
+      matchedIndex = i
+      break
+    }
+  }
+  
+  // 4. 如果匹配成功，返回对应回复
+  if (matchedTemplate) {
+    // 更新索引，用于下次匹配（如果继续在当前岗位模板中）
+    if (currentStage !== 'common') {
+      interviewGuide.templateIndex = (matchedIndex + 1) % currentTemplates.length
+    }
+    
+    return {
+      reply: matchedTemplate.template_reply,
+      question: '', // 模板回复中已包含问题，不需要额外question
+      tips: _defaultInterviewTips(matchedTemplate.template_reply),
+      isTemplate: true
+    }
+  }
+  
+  // 5. 如果没有匹配，根据当前阶段返回默认回复
+  if (currentStage === 'common') {
+    // 通用阶段：返回第一个通用模板
+    const defaultTemplate = interviewTemplates.common[0]
+    return {
+      reply: defaultTemplate.template_reply,
+      question: '',
+      tips: _defaultInterviewTips(defaultTemplate.template_reply),
+      isTemplate: true
+    }
+  } else {
+    // 岗位阶段：返回当前岗位模板的下一个问题（按索引）
+    const roleTemplates = interviewTemplates[currentStage] || interviewTemplates.common
+    const nextIndex = interviewGuide.templateIndex % roleTemplates.length
+    const nextTemplate = roleTemplates[nextIndex]
+    interviewGuide.templateIndex = (nextIndex + 1) % roleTemplates.length
+    
+    return {
+      reply: nextTemplate.template_reply,
+      question: '',
+      tips: _defaultInterviewTips(nextTemplate.template_reply),
+      isTemplate: true
+    }
+  }
+}
+
+// 调用后端已接入 DeepSeek 的接口（引导环节专用）
+const callDeepSeekGuide = async ({ userMsg }) => {
+  const guidePrompt = `你是一个亲切友好的面试引导者，面向新手用户（大一大二/面试零基础）。你的任务是帮助用户梳理自身经历、明确面试方向，传递基础回答技巧。
+
+当前阶段：引导环节（面试前的准备阶段）
+用户画像：${interviewGuide.grade || '未说明'}，目标岗位：${interviewGuide.targetRole || '未确定'}
+
+请围绕以下方向提问（3-5轮即可）：
+1. 破冰类：了解用户的学历阶段和想面试的岗位
+2. 经历类：了解用户的项目/实习/竞赛/学习经历
+3. 求职动机类：了解用户为什么想面试这个岗位
+4. 职业规划类：了解用户未来1-2年的学习和工作规划
+
+要求：
+- 问题要新手友好，不涉及专业技术，无专业门槛
+- 每次只问一个问题，语气亲切自然
+- 在回复末尾可以给一个简短的回答技巧提示（仅文字，不语音播报）
+- 如果已完成3-5轮引导，在最后回复中说明"好的，我大概了解你的情况啦！那我们现在开始正式的岗位面试吧"`
+
+  const instruction = `
+你将进行"面试前引导环节"对话。请严格输出一个 JSON 对象（可以放在 Markdown 中，但 JSON 必须完整可解析），不要输出多余的文字。
+
+JSON 结构：
+{
+  "reply": "对用户刚才回答的简短反馈（1-2句）+ 你的下一个引导问题（只问一个问题）",
+  "tip": "给用户的【回答技巧轻提示】（仅文字展示，不语音播报，教用户基础的回答逻辑/语言组织技巧，而非直接给回答模板）"
+}
+
+要求：
+- 引导者语气亲切、友好，问题贴合新手水平
+- tip 仅给方法论（如"可以用「一句话概括经历 + 核心做了什么 + 收获了什么」的逻辑"），不要给成段模板答案
+- 如果已完成3-5轮引导，在reply中说明"好的，我大概了解你的情况啦！那我们现在开始正式的岗位面试吧"
+`
+
+  const res = await axios.post(`${API_BASE}/api/analyze-experiment`, {
+    career: '模拟面试（引导环节）',
+    answers: {
+      system_prompt: guidePrompt,
+      guide: interviewGuide,
+      history: (chatHistory.value || [])
+        .filter(m => m && m.role && typeof m.content === 'string' && !m._isLoading)
+        .slice(-6)
+        .map(m => ({ role: m.role, content: m.content })),
+      user_message: userMsg,
+      instruction
+    }
+  })
+
+  const markdown = res?.data?.markdown || ''
+  const parsed = _extractJsonObject(markdown)
+  const reply = (parsed?.reply && String(parsed.reply).trim()) || _stripMarkdownToText(markdown) || '（未返回内容）'
+  const tip = (parsed?.tip && String(parsed.tip).trim()) || ''
+
+  return { reply, tip }
+}
+
+// 调用后端已接入 DeepSeek 的接口（复用 axios + API_BASE，不改后端）
+const callDeepSeekInterview = async ({ userMsg }) => {
+  const defaultInterviewPrompt = `你是一个严厉但公正的技术面试官。请根据用户的求职意向提出有深度的问题；每次只问一个问题，并在用户回答后追问。`
+  const interviewPrompt = localStorage.getItem('admin_ai_interview') || defaultInterviewPrompt
+
+  // 精简历史上下文：只保留最近3轮对话（6条消息），减少传输和计算量
+  const compactHistory = (chatHistory.value || [])
+    .filter(m => m && m.role && typeof m.content === 'string' && !m._isLoading)
+    .slice(-6)
+    .map(m => ({ role: m.role, content: m.content }))
+
+  const instruction = `
+你将进行“模拟面试”对话。请严格输出一个 JSON 对象（可以放在 Markdown 中，但 JSON 必须完整可解析），不要输出多余的文字。
+
+JSON 结构：
+{
+  "reply": "对用户刚才回答的简短反馈（1-3句）",
+  "question": "你的下一道追问/新问题（只问一个问题）",
+  "tips": "给用户的【话术建议与逻辑拆解】（只给框架，不要给可直接照抄的完整回答）"
+}
+
+要求：
+- 面试官语气专业、真实，问题要结合上下文
+- tips 仅给方法论（STAR/MECE/结构化表达/边界条件等），不要给成段模板答案
+`
+
+  const res = await axios.post(`${API_BASE}/api/analyze-experiment`, {
+    career: '模拟面试（真实对话）',
+    answers: {
+      system_prompt: interviewPrompt,
+      guide: interviewGuide,
+      history: compactHistory,
+      user_message: userMsg,
+      instruction
+    }
+  })
+
+  const markdown = res?.data?.markdown || ''
+  const parsed = _extractJsonObject(markdown)
+  const reply = (parsed?.reply && String(parsed.reply).trim()) || _stripMarkdownToText(markdown) || '（未返回内容）'
+  const question = (parsed?.question && String(parsed.question).trim()) || ''
+  const tips = (parsed?.tips && String(parsed.tips).trim()) || _defaultInterviewTips(question || reply)
+
+  return { reply, question, tips }
+}
+
 const fetchJobsData = async () => {
   try {
     const res = await axios.post(`${API_BASE}/api/recommend`)
@@ -274,7 +853,145 @@ const fetchJobsData = async () => {
   } catch (e) { console.error(e) }
 }
 
-// --- 发送消息 (已集成语音) ---
+// --- 模拟面试优化：本地缓存（高频问题） ---
+const getCachedResponse = (userMsg) => {
+  try {
+    const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}')
+    const normalizedMsg = userMsg.trim().toLowerCase()
+    // 检查常见问题关键词
+    const commonQuestions = [
+      '自我介绍', '优缺点', '为什么选择', '职业规划', '项目经历',
+      '自我介绍', '优缺点', '为什么', '规划', '项目'
+    ]
+    const isCommonQuestion = commonQuestions.some(q => normalizedMsg.includes(q))
+    if (!isCommonQuestion) return null
+    
+    const cacheKey = Object.keys(cache).find(k => {
+      const cachedMsg = k.toLowerCase()
+      return cachedMsg.includes(normalizedMsg) || normalizedMsg.includes(cachedMsg)
+    })
+    if (!cacheKey) return null
+    
+    const cached = cache[cacheKey]
+    const expireTime = cached.timestamp + (CACHE_EXPIRE_DAYS * 24 * 60 * 60 * 1000)
+    if (Date.now() > expireTime) {
+      delete cache[cacheKey]
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cache))
+      return null
+    }
+    return cached.response
+  } catch (e) {
+    return null
+  }
+}
+
+const setCachedResponse = (userMsg, response) => {
+  try {
+    const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}')
+    cache[userMsg.trim()] = {
+      response,
+      timestamp: Date.now()
+    }
+    // 限制缓存大小（最多保留50条）
+    const keys = Object.keys(cache)
+    if (keys.length > 50) {
+      const sorted = keys.sort((a, b) => cache[a].timestamp - cache[b].timestamp)
+      sorted.slice(0, keys.length - 50).forEach(k => delete cache[k])
+    }
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache))
+  } catch (e) {
+    // 忽略缓存错误
+  }
+}
+
+// --- 打字机效果（逐字显示） ---
+const typewriterEffect = (targetMsgId, fullText, onComplete) => {
+  if (typingTimer.value) clearInterval(typingTimer.value)
+  let index = 0
+  const msg = chatHistory.value.find(m => m._id === targetMsgId)
+  if (!msg) return
+  
+  typingTimer.value = setInterval(() => {
+    if (index < fullText.length) {
+      msg.content = fullText.substring(0, index + 1)
+      index++
+      scrollChatToBottom()
+    } else {
+      clearInterval(typingTimer.value)
+      typingTimer.value = null
+      if (onComplete) onComplete()
+    }
+  }, 30) // 每30ms显示一个字符
+}
+
+// --- 带超时和重试的 API 调用（AI优先模式） ---
+const callDeepSeekWithTimeout = async (userMsg, retryCount = 0) => {
+  return new Promise(async (resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      if (retryCount < MAX_RETRY) {
+        ElMessage.warning('网络有点慢，我再想想~')
+        // 自动重试一次
+        callDeepSeekWithTimeout(userMsg, retryCount + 1).then(resolve).catch(reject)
+      } else {
+        reject(new Error('请求超时'))
+      }
+    }, TIMEOUT_MS)
+    
+    try {
+      const result = await callDeepSeekInterview({ userMsg })
+      clearTimeout(timeoutId)
+      resolve(result)
+    } catch (e) {
+      clearTimeout(timeoutId)
+      if (retryCount < MAX_RETRY) {
+        // 重试一次
+        setTimeout(() => {
+          callDeepSeekWithTimeout(userMsg, retryCount + 1).then(resolve).catch(reject)
+        }, 1000)
+      } else {
+        reject(e)
+      }
+    }
+  })
+}
+
+// --- AI优先模式：8秒内获取AI回复，超时则返回null触发降级（引导环节专用） ---
+const callDeepSeekGuideWithFastTimeout = async (userMsg) => {
+  return new Promise(async (resolve) => {
+    const timeoutId = setTimeout(() => {
+      resolve(null) // 超时返回null，触发模板降级
+    }, AI_TIMEOUT_MS)
+    
+    try {
+      const result = await callDeepSeekGuide({ userMsg })
+      clearTimeout(timeoutId)
+      resolve(result) // 成功返回结果
+    } catch (e) {
+      clearTimeout(timeoutId)
+      resolve(null) // 失败返回null，触发模板降级
+    }
+  })
+}
+
+// --- AI优先模式：8秒内获取AI回复，超时则返回null触发降级 ---
+const callDeepSeekWithFastTimeout = async (userMsg) => {
+  return new Promise(async (resolve) => {
+    const timeoutId = setTimeout(() => {
+      resolve(null) // 超时返回null，触发模板降级
+    }, AI_TIMEOUT_MS)
+    
+    try {
+      const result = await callDeepSeekInterview({ userMsg })
+      clearTimeout(timeoutId)
+      resolve(result) // 成功返回结果
+    } catch (e) {
+      clearTimeout(timeoutId)
+      resolve(null) // 失败返回null，触发模板降级
+    }
+  })
+}
+
+// --- 发送消息 (已集成语音 + 优化响应速度) ---
 const sendMessage = async () => {
   if (!chatInput.value || chatSending.value) return
   const userMsg = chatInput.value
@@ -286,30 +1003,243 @@ const sendMessage = async () => {
 
   try {
     chatSending.value = true
-    // 可选：为模拟面试场景注入 Admin 配置的提示词（localStorage ）
-    const defaultInterviewPrompt = `你是一个严厉但公正的技术面试官。请根据用户的求职意向（如Java后端），提出有深度的技术问题。\n每次只问一个问题，并在用户回答后进行追问。不要一次性抛出太多问题。`
-    const interviewPrompt = localStorage.getItem('admin_ai_interview') || defaultInterviewPrompt
-
-    const res = await axios.post(`${API_BASE}/api/chat`, { message: userMsg, system_prompt: interviewPrompt })
-    let reply = res.data?.reply || res.data?.reply_text || '（未返回内容）'
-
-    if (jobsData.value.length > 0 && Math.random() > 0.5) { 
-      const randomJob = jobsData.value[Math.floor(Math.random() * jobsData.value.length)]
-      reply += `\n\n💼 推荐：${randomJob['岗位']} - ${randomJob['平均薪资']}`
+    
+    // 新手引导信息：仅作为上下文供 AI 更好地追问，不改变交互
+    if (!interviewGuide.started) interviewGuide.started = true
+    
+    // 检测是否是第一次用户回复（且还在引导环节），如果是则发送引导话术
+    if (isGuidingPhase.value && chatHistory.value.filter(m => m.role === 'user').length === 1) {
+      // 用户第一次回复，发送引导话术
+      const guideText = '你好呀！我是你的专属模拟面试官😊 在正式面试前，我们先轻松聊一聊，帮你梳理一下自己的情况～可以先简单说说你的学历阶段和想面试的岗位吗？'
+      const guideTip = '回答学历和岗位时，可以简洁明了：例如"我是大二，想体验前端工程师岗位"～'
+      
+      // 在用户消息后添加引导消息
+      chatHistory.value.push({
+        role: 'ai',
+        content: guideText,
+        tip: guideTip,
+        _isGuide: true,
+        _isLoading: false,
+        _isTemplate: false
+      })
+      
+      // 触发语音播报（不播报tip）
+      speakText(guideText)
+      await nextTick()
+      scrollChatToBottom()
+      
+      // 直接返回，不继续处理用户消息的AI回复
+      chatSending.value = false
+      return
+    }
+    
+    // 识别岗位（用于模板匹配）
+    const roleKeywords = {
+      '前端工程师': /前端工程师|前端/,
+      '算法工程师': /算法工程师|算法/,
+      '全栈后端工程师': /全栈后端|全栈|后端工程师/,
+      'Java开发工程师': /Java开发|Java工程师|Java/,
+      'Python开发工程师': /Python开发|Python工程师|Python/
+    }
+    for (const [role, pattern] of Object.entries(roleKeywords)) {
+      if (pattern.test(userMsg) && !interviewGuide.targetRole) {
+        interviewGuide.targetRole = role
+        interviewGuide.templateRole = role
+        interviewGuide.templateStage = role
+        break
+      }
+    }
+    
+    // 识别学历阶段
+    if (!interviewGuide.grade && /(大一|大二|大三|大四|研一|研二|研三)/.test(userMsg)) {
+      const m = userMsg.match(/(大一|大二|大三|大四|研一|研二|研三)/)
+      if (m) interviewGuide.grade = m[1]
+    }
+    
+    // 识别目标类型（实习/全职）
+    if (!interviewGuide.targetType && /(实习|日常|暑期|秋招|校招|全职)/.test(userMsg)) {
+      if (/实习|日常|暑期/.test(userMsg)) interviewGuide.targetType = '实习'
+      else if (/全职|秋招|校招/.test(userMsg)) interviewGuide.targetType = '全职'
     }
 
-    chatHistory.value.push({ role: 'ai', content: reply })
-    
-    // 🔥 触发语音播报
-    speakText(reply) 
-
+    // ✅ 立即显示加载状态（让用户感知到系统在处理）
+    const loadingMsgId = `loading_${Date.now()}`
+    const loadingMsg = {
+      _id: loadingMsgId,
+      role: 'ai',
+      content: '面试官正在思考...',
+      _isLoading: true
+    }
+    chatHistory.value.push(loadingMsg)
+    aiThinkingMsgId.value = loadingMsgId
+    interviewerState.value = 'talking'
     await nextTick()
     scrollChatToBottom()
+
+    // ✅ 判断当前是否在引导环节
+    let finalText = ''
+    let tips = ''
+    let tip = '' // 回答技巧轻提示（仅引导环节使用）
+    let isTemplate = false
+    let isGuide = false
+    
+    if (isGuidingPhase.value) {
+      // ========== 引导环节：AI优先，模板兜底 ==========
+      if (useTemplateMode.value) {
+        // 用户主动选择模板模式
+        const templateRes = getGuideTemplateResponse(userMsg)
+        finalText = templateRes.reply
+        tip = templateRes.tip || ''
+        isTemplate = true
+        isGuide = true
+      } else {
+        // AI优先：8秒内尝试获取AI回复
+        const aiResult = await callDeepSeekGuideWithFastTimeout(userMsg)
+        
+        if (aiResult) {
+          // AI成功返回
+          finalText = aiResult.reply
+          tip = aiResult.tip || ''
+        } else {
+          // AI超时或失败，降级到模板
+          const templateRes = getGuideTemplateResponse(userMsg)
+          finalText = templateRes.reply
+          tip = templateRes.tip || ''
+          isTemplate = true
+          isGuide = true
+          finalText += '\n\n[模拟回复]'
+        }
+      }
+      
+      // 检查是否完成引导环节（检测过渡话术或达到最大轮次）
+      guideRoundCount.value++
+      if (finalText.includes('开始正式的岗位面试') || guideRoundCount.value >= guideMaxRounds) {
+        // 引导环节完成，切换到正式面试
+        isGuidingPhase.value = false
+        guideRoundCount.value = 0
+        interviewGuide.guideIndex = 0
+      }
+    } else {
+      // ========== 正式面试环节：原有逻辑 ==========
+      // 如果用户主动选择模板模式，直接使用模板
+      if (useTemplateMode.value) {
+        const templateRes = getTemplateResponse(userMsg)
+        // 模板回复已包含完整内容（回复+问题），直接使用
+        finalText = templateRes.reply
+        tips = templateRes.tips || ''
+        isTemplate = true
+      } else {
+        // 检查本地缓存（高频问题）
+        let cachedResponse = getCachedResponse(userMsg)
+        
+        if (cachedResponse) {
+          // 使用缓存
+          finalText = cachedResponse.content
+          tips = cachedResponse.tips || ''
+        } else {
+          // ✅ AI优先：8秒内尝试获取AI回复
+          const aiResult = await callDeepSeekWithFastTimeout(userMsg)
+          
+          if (aiResult) {
+            // AI成功返回
+            tips = aiResult.tips || ''
+            finalText = aiResult.reply
+            if (aiResult.question) finalText = `${aiResult.reply}\n\n👉 ${aiResult.question}`
+
+            if (jobsData.value.length > 0 && Math.random() > 0.5) { 
+              const randomJob = jobsData.value[Math.floor(Math.random() * jobsData.value.length)]
+              finalText += `\n\n💼 推荐：${randomJob['岗位']} - ${randomJob['平均薪资']}`
+            }
+            
+            // 缓存高频问题的回答
+            setCachedResponse(userMsg, { content: finalText, tips })
+          } else {
+            // AI超时或失败，降级到模板
+            const templateRes = getTemplateResponse(userMsg)
+            // 模板回复已包含完整内容（回复+问题），直接使用
+            finalText = templateRes.reply
+            tips = templateRes.tips || ''
+            isTemplate = true
+            // 在模板回复末尾添加细微提示（使用纯文本，避免HTML解析问题）
+            finalText += '\n\n[模拟回复]'
+          }
+        }
+      }
+    }
+
+    // ✅ 移除加载消息，添加真实回复（使用打字机效果）
+    const loadingIndex = chatHistory.value.findIndex(m => m._id === loadingMsgId)
+    if (loadingIndex > -1) {
+      chatHistory.value.splice(loadingIndex, 1)
+    }
+    
+    const aiMsgId = `ai_${Date.now()}`
+    const aiMsg = {
+      _id: aiMsgId,
+      role: 'ai',
+      content: '', // 初始为空，打字机效果会逐步填充
+      tips: isGuide ? '' : tips, // 引导环节不使用tips，使用tip
+      tip: isGuide ? tip : '', // 引导环节专用的回答技巧轻提示
+      _isLoading: false,
+      _isTemplate: isTemplate, // 标记是否为模板回复
+      _isGuide: isGuide // 标记是否为引导环节
+    }
+    chatHistory.value.push(aiMsg)
+    aiThinkingMsgId.value = null
+    await nextTick()
+    scrollChatToBottom()
+
+    // ✅ 打字机效果（逐字显示，增强实时感）
+    // 准备语音播报内容（去除模板提示标记）
+    const speakContent = finalText.replace(/\n\n\[模拟回复\]/g, '').trim()
+    typewriterEffect(aiMsgId, finalText, () => {
+      // 打字完成后触发语音播报（不播报"[模拟回复]"提示）
+      if (speakContent) speakText(speakContent)
+      interviewerState.value = 'neutral'
+    })
+
   } catch (e) {
-    chatHistory.value.push({ role: 'ai', content: '连接后端失败' })
+    // 移除加载消息
+    const loadingIndex = chatHistory.value.findIndex(m => m._id === aiThinkingMsgId.value)
+    if (loadingIndex > -1) {
+      chatHistory.value.splice(loadingIndex, 1)
+    }
+    aiThinkingMsgId.value = null
+    interviewerState.value = 'neutral'
+    
+    chatHistory.value.push({ role: 'ai', content: '连接后端失败，请稍后重试' })
+    ElMessage.error('网络连接失败')
   } finally {
     chatSending.value = false
   }
+}
+
+// --- 提前结束引导，开始正式面试 ---
+const skipGuideAndStartInterview = () => {
+  // 检查用户是否已选择岗位
+  if (!interviewGuide.targetRole && !interviewGuide.templateRole) {
+    ElMessage.warning('请先告诉我你想面试的岗位哦～')
+    return
+  }
+  
+  // 切换到正式面试环节
+  isGuidingPhase.value = false
+  guideRoundCount.value = 0
+  interviewGuide.guideIndex = 0
+  
+  // 发送过渡消息
+  const transitionText = '好的，我大概了解你的情况啦！那我们现在开始正式的岗位面试吧，问题会贴合你刚才说的信息，不用紧张，大胆回答就好～'
+  chatHistory.value.push({
+    role: 'ai',
+    content: transitionText,
+    _isGuide: false,
+    _isLoading: false,
+    _isTemplate: false
+  })
+  
+  // 触发语音播报
+  speakText(transitionText)
+  nextTick(() => scrollChatToBottom())
 }
 
 // --- 召唤 Agent (已集成语音) ---
@@ -533,6 +1463,161 @@ const scheduleSandboxUpdate = () => {
 }
 watch(radarValues, () => { scheduleSandboxUpdate() })
 
+// 竞争力沙盘：AI 自动量化（允许自然语言自由输入；不做格式校验）
+const _clamp100 = (n) => Math.max(0, Math.min(100, n))
+const _toFiniteNumber = (v, fallback) => {
+  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').trim())
+  return Number.isFinite(n) ? n : fallback
+}
+const _extractJsonObject = (text) => {
+  if (!text) return null
+  const s = String(text)
+  // 先取 ```json ... ``` 包裹内容
+  const fenced = s.match(/```json\s*([\s\S]*?)\s*```/i)
+  if (fenced && fenced[1]) {
+    try { return JSON.parse(fenced[1]) } catch (_) {}
+  }
+  // 再尝试抓取第一个 JSON 对象
+  const obj = s.match(/\{[\s\S]*\}/)
+  if (obj && obj[0]) {
+    try { return JSON.parse(obj[0]) } catch (_) {}
+  }
+  return null
+}
+
+/**
+ * 调用项目现有 AI 接口（沿用 axios + API_BASE）对自然语言进行量化。
+ * 约束：不改后端/不引入新依赖，因此复用后端已存在的 `/api/analyze-experiment`（返回 markdown）。
+ * 做法：让 AI 在 markdown 文本中包含一个可解析的 JSON 对象，我们从返回文本中提取并更新雷达图。
+ */
+const aiQuantizeSandboxInputs = async () => {
+  const nl = {
+    gpa: sandboxForm.gpa,
+    project: sandboxForm.project,
+    intern: sandboxForm.intern,
+    competition: sandboxForm.competition,
+    english: sandboxForm.english,
+    leader: sandboxForm.leader,
+  }
+
+  const instruction = `
+你现在的任务是：把“个人竞争力沙盘”的 6 项自然语言描述量化到 0-100 分，并返回 JSON。
+
+【输出要求：必须包含且仅包含一个 JSON 对象（可以放在 Markdown 中，但 JSON 必须完整可解析）】
+{
+  "scores": {
+    "gpa": 0-100,
+    "project": 0-100,
+    "intern": 0-100,
+    "competition": 0-100,
+    "english": 0-100,
+    "leader": 0-100
+  },
+  "reasoning": "用 3-6 句话解释量化依据（可选）"
+}
+
+【量化规则提示】
+- 允许缺失：若用户写“无/没有/暂未”，给 10-30 的合理分
+- 若描述很强（名企实习、国奖、顶会论文等），给 80-100
+- 若描述一般（校级奖/普通项目），给 50-75
+- GPA：3.8/4.0 大约 90-98；3.0/4.0 大约 70-80；2.5/4.0 大约 55-70
+`
+
+  // 复用现有 AI 调用方式：走后端 analyze-experiment（返回 markdown 文本）
+  const res = await axios.post(`${API_BASE}/api/analyze-experiment`, {
+    career: '个人竞争力沙盘量化',
+    answers: {
+      instruction,
+      inputs: nl
+    }
+  })
+
+  const markdown = res?.data?.markdown || ''
+  const parsed = _extractJsonObject(markdown)
+  const scores = parsed?.scores || {}
+
+  // 即使 AI 未返回可解析 JSON，也要保证功能可用：做温和兜底（保持原值，不弹“格式不正确”）
+  const next = {
+    gpa: _clamp100(_toFiniteNumber(scores.gpa, radarValues.gpa)),
+    project: _clamp100(_toFiniteNumber(scores.project, radarValues.project)),
+    intern: _clamp100(_toFiniteNumber(scores.intern, radarValues.intern)),
+    competition: _clamp100(_toFiniteNumber(scores.competition, radarValues.competition)),
+    english: _clamp100(_toFiniteNumber(scores.english, radarValues.english)),
+    leader: _clamp100(_toFiniteNumber(scores.leader, radarValues.leader)),
+  }
+
+  return { markdown, next }
+}
+
+// 点击「生成雷达图」：调用 AI 自动量化 -> 写回 radarValues -> 触发原有 watch/raf 渲染（雷达图视觉不变）
+const generateSandboxRadar = async () => {
+  try {
+    const { next } = await aiQuantizeSandboxInputs()
+    radarValues.gpa = next.gpa
+    radarValues.project = next.project
+    radarValues.intern = next.intern
+    radarValues.competition = next.competition
+    radarValues.english = next.english
+    radarValues.leader = next.leader
+    ElMessage.success('雷达图已更新')
+  } catch (e) {
+    console.error(e)
+    // 不再提示“格式不正确”，仅提示服务不可用；并保持旧雷达值不变
+    ElMessage.error('量化失败：请确认后端服务与 AI 接口可用')
+  }
+}
+
+// 点击「生成AI分析报告」：复用项目现有 API_BASE + axios 调用方式，调用后端已有的 /api/analyze-experiment（返回 Markdown）
+const generateSandboxAiReport = async () => {
+  sandboxReportLoading.value = true
+  sandboxReportMarkdown.value = ''
+  try {
+    const payload = {
+      // 原始输入（便于 AI 理解）
+      'GPA（绩点）': sandboxForm.gpa,
+      '项目实战经验': sandboxForm.project,
+      '名企实习经历': sandboxForm.intern,
+      '竞赛获奖情况': sandboxForm.competition,
+      '英语学术能力': sandboxForm.english,
+      '领导力与协作': sandboxForm.leader,
+      // 量化后的雷达数据（用于分析）
+      '雷达图量化数据(0-100)': {
+        gpa: radarValues.gpa,
+        project: radarValues.project,
+        intern: radarValues.intern,
+        competition: radarValues.competition,
+        english: radarValues.english,
+        leader: radarValues.leader,
+      }
+    }
+
+    const res = await axios.post(`${API_BASE}/api/analyze-experiment`, {
+      answers: payload,
+      career: '个人竞争力沙盘分析'
+    })
+
+    sandboxReportMarkdown.value = res?.data?.markdown || ''
+    if (!sandboxReportMarkdown.value) ElMessage.warning('AI 未返回报告内容，请稍后重试')
+    else ElMessage.success('AI 分析报告已生成')
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('生成失败：请确认后端服务已启动且 AI 接口可用')
+  } finally {
+    sandboxReportLoading.value = false
+  }
+}
+
+const downloadSandboxReport = () => {
+  if (!sandboxReportMarkdown.value) return ElMessage.warning('暂无报告可下载')
+  const blob = new Blob([sandboxReportMarkdown.value], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = '个人竞争力分析报告.md'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ==========================================
 // 6. 生命周期 & 辅助 (Lifecycle)
 // ==========================================
@@ -541,6 +1626,15 @@ const handleSelect = (key) => {
   if (key === '3') nextTick(() => initSandboxChart())
   if (key === '1') nextTick(() => initResumeRadar())
   if (key === '7') router.push('/virtual-experiment')
+  // 模拟面试：进入页面时初始化引导环节状态
+  if (key === '2') {
+    // 如果聊天历史只有初始消息，重置引导环节状态
+    if (chatHistory.value && chatHistory.value.length === 1 && chatHistory.value[0].content === '你好，我是AI模拟面试官😊') {
+      isGuidingPhase.value = true
+      guideRoundCount.value = 0
+      interviewGuide.guideIndex = 0
+    }
+  }
 }
 const handleLoginSuccess = (userData) => {
   currentUser.value = userData
@@ -1039,7 +2133,31 @@ onBeforeUnmount(() => {
                   </div>
                   <div class="bubble">
   <div class="bubble-name">{{ msg.role === 'ai' ? 'AI 面试官' : '我' }}</div>
-  <div class="bubble-text">{{ msg.content }}</div>
+  <div class="bubble-text" :class="{ 'thinking-text': msg._isLoading, 'template-text': msg._isTemplate }">
+    {{ msg.content }}
+    <span v-if="msg._isLoading" class="thinking-dots">
+      <span>.</span><span>.</span><span>.</span>
+    </span>
+  </div>
+
+  <!-- 新增：回答技巧轻提示（仅引导环节显示，不语音播报） -->
+  <div v-if="msg.role === 'ai' && msg._isGuide && msg.tip" class="guide-tip-box">
+    <div class="guide-tip-content">
+      <el-icon class="guide-tip-icon"><InfoFilled /></el-icon>
+      <span>{{ msg.tip }}</span>
+    </div>
+  </div>
+
+  <!-- 新增：话术建议与逻辑拆解（仅正式面试显示，不语音播报） -->
+  <div v-if="msg.role === 'ai' && !msg._isGuide && msg.tips" style="margin-top: 10px;">
+    <el-collapse accordion>
+      <el-collapse-item title="话术建议与逻辑拆解（点击展开）" name="tips">
+        <div style="white-space: pre-wrap; color: rgba(15,23,42,0.72); line-height: 1.7;">
+          {{ msg.tips }}
+        </div>
+      </el-collapse-item>
+    </el-collapse>
+  </div>
 
   <div v-if="msg.jobs && msg.jobs.length > 0" class="job-card-list">
     <div v-for="(job, jIndex) in msg.jobs" :key="jIndex" class="job-card-item">
@@ -1075,68 +2193,68 @@ onBeforeUnmount(() => {
               </div>
   
               <div class="input-area">
+                <!-- 新增：提前结束引导，开始正式面试按钮（仅引导环节显示） -->
+                <div v-if="isGuidingPhase" style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                  <el-button 
+                    type="primary" 
+                    plain
+                    @click="skipGuideAndStartInterview"
+                    class="skip-guide-button"
+                  >
+                    ⚡ 提前结束引导，开始正式面试
+                  </el-button>
+                </div>
+                
+                <!-- 新增：使用模拟模式开关（可选功能） -->
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; color: rgba(15,23,42,0.65);">
+                  <el-switch
+                    v-model="useTemplateMode"
+                    size="small"
+                    active-text="使用模拟模式"
+                    inactive-text="AI优先模式"
+                    style="--el-switch-on-color: #409EFF;"
+                  />
+                  <span v-if="useTemplateMode" style="color: rgba(64,158,255,0.85);">当前：模板对话模式</span>
+                </div>
+                
                 <div class="input-row">
-  <el-input
-    v-model="chatInput"
-    placeholder="输入你的回答…（Enter 发送）"
-    @keyup.enter="sendMessage"
-    size="large"
-    class="full-width-input"
-  >
-    <template #prepend>
-      <el-button 
-        @click="toggleVoiceInput"
-        :class="{ 'recording-active': isRecording }"
-        :title="isRecording ? '点击停止' : '点击说话'"
-      >
-        <el-icon :class="{ 'mic-pulse': isRecording }" :size="20">
-          <Microphone />
-        </el-icon>
-      </el-button>
-    </template>
-    
-    <div class="input-row">
-  <el-input
-    v-model="chatInput"
-    placeholder="输入你的回答…（Enter 发送）"
-    @keyup.enter="sendMessage"
-    size="large"
-    class="full-width-input" 
-  >
-    <template #prepend>
-      <el-button 
-        @click="toggleVoiceInput"
-        :class="{ 'recording-active': isRecording }"
-        :title="isRecording ? '点击停止' : '点击说话'"
-      >
-        <el-icon :class="{ 'mic-pulse': isRecording }" :size="20">
-          <Microphone />
-        </el-icon>
-      </el-button>
-    </template>
-    
-    <template #append>
-      <el-button 
-        :type="chatInput.trim().length > 0 ? 'success' : 'primary'" 
-        :loading="chatSending" 
-        @click="sendMessage"
-        class="rocket-btn"
-      >
-        {{ chatInput.trim().length > 0 ? '发送 🚀' : '发送' }}
-      </el-button>
-    </template>
-  </el-input>
-</div>
-  </el-input>
-</div>
+                  <el-input
+                    v-model="chatInput"
+                    placeholder="输入你的回答…（Enter 发送）"
+                    @keyup.enter="sendMessage"
+                    size="large"
+                    class="full-width-input"
+                  >
+                    <template #prepend>
+                      <el-button 
+                        @click="toggleVoiceInput"
+                        :class="{ 'recording-active': isRecording }"
+                        :title="isRecording ? '点击停止' : '点击说话'"
+                      >
+                        <el-icon :class="{ 'mic-pulse': isRecording }" :size="20">
+                          <Microphone />
+                        </el-icon>
+                      </el-button>
+                    </template>
+                    
+                    <template #append>
+                      <el-button 
+                        :type="chatInput.trim().length > 0 ? 'success' : 'primary'" 
+                        :loading="chatSending" 
+                        @click="sendMessage"
+                        class="rocket-btn"
+                      >
+                        {{ chatInput.trim().length > 0 ? '发送 🚀' : '发送' }}
+                      </el-button>
+                    </template>
+                  </el-input>
+                </div>
 
-    
-
-<div class="agent-action">
-  <el-button type="success" :loading="agentCalling" @click="callAgent" class="agent-button">
-    ⚡ 召唤 Agent 智能推荐
-  </el-button>
-</div>
+                <div class="agent-action">
+                  <el-button type="success" :loading="agentCalling" @click="callAgent" class="agent-button">
+                    ⚡ 召唤 Agent 智能推荐
+                  </el-button>
+                </div>
               </div>
             </div>
           </div>
@@ -1155,29 +2273,36 @@ onBeforeUnmount(() => {
               <el-col :span="8">
                 <div class="glass-card control-panel">
                   <div class="card-title">参数调节</div>
+                  <!-- 输入区域改造：移除滑块，替换为表单输入（布局位置保持不变） -->
                   <div class="slider-item">
-                    <span>学业成绩 (GPA)</span>
-                    <el-slider v-model="radarValues.gpa" :min="0" :max="100" show-input />
+                    <span>GPA（绩点）</span>
+                    <el-input v-model="sandboxForm.gpa" placeholder="示例：3.6（0-4）或 85（0-100）" />
                   </div>
                   <div class="slider-item">
                     <span>项目实战经验</span>
-                    <el-slider v-model="radarValues.project" :min="0" :max="100" show-input />
+                    <el-input v-model="sandboxForm.project" placeholder="示例：8（0-10）或 80（0-100）/ 或简述关键项目" />
                   </div>
                   <div class="slider-item">
                     <span>名企实习经历</span>
-                    <el-slider v-model="radarValues.intern" :min="0" :max="100" show-input />
+                    <el-input v-model="sandboxForm.intern" placeholder="示例：2（段）或 70（0-100）/ 或简述公司与岗位" />
                   </div>
                   <div class="slider-item">
                     <span>竞赛获奖情况</span>
-                    <el-slider v-model="radarValues.competition" :min="0" :max="100" show-input />
+                    <el-input v-model="sandboxForm.competition" placeholder="示例：省二/国奖/Top% 或 75（0-100）" />
                   </div>
                   <div class="slider-item">
-                    <span>英语/学术能力</span>
-                    <el-slider v-model="radarValues.english" :min="0" :max="100" show-input />
+                    <span>英语学术能力</span>
+                    <el-input v-model="sandboxForm.english" placeholder="示例：六级 520/雅思 7/论文海报 或 85（0-100）" />
                   </div>
                   <div class="slider-item">
                     <span>领导力与协作</span>
-                    <el-slider v-model="radarValues.leader" :min="0" :max="100" show-input />
+                    <el-input v-model="sandboxForm.leader" placeholder="示例：社团干部/组长经历 或 80（0-100）" />
+                  </div>
+
+                  <div class="card-actions" style="justify-content: flex-start;">
+                    <el-button type="primary" @click="generateSandboxRadar">
+                      生成雷达图
+                    </el-button>
                   </div>
                 </div>
               </el-col>
@@ -1186,6 +2311,29 @@ onBeforeUnmount(() => {
                 <div class="glass-card chart-wrap">
                   <div class="chart-title">ECharts · Radar (Smooth Update)</div>
                   <div class="chart-container" ref="sandboxChartRef"></div>
+
+                  <!-- AI 分析（按钮样式与左侧一致，布局紧贴雷达图下方） -->
+                  <div class="card-actions" style="justify-content: flex-start; gap: 10px;">
+                    <el-button type="primary" :loading="sandboxReportLoading" @click="generateSandboxAiReport">
+                      {{ sandboxReportLoading ? '生成中...' : '生成AI分析报告' }}
+                    </el-button>
+                  </div>
+
+                  <!-- 报告展示与下载（Markdown 渲染风格复用现有 markdown-body） -->
+                  <el-divider />
+                  <div class="glass-card report-card" style="padding: 14px; margin-top: 0;">
+                    <div class="card-title" style="margin-bottom: 10px; justify-content: space-between;">
+                      <span>📄 AI 分析报告（Markdown）</span>
+                      <el-button type="success" plain :disabled="!sandboxReportMarkdown" @click="downloadSandboxReport">
+                        下载报告
+                      </el-button>
+                    </div>
+
+                    <div v-if="sandboxReportMarkdown" class="markdown-body" v-html="sandboxReportHtml"></div>
+                    <div v-else class="empty-hint">
+                      提示：请先填写左侧 6 项信息并点击「生成AI分析报告」。
+                    </div>
+                  </div>
                 </div>
               </el-col>
             </el-row>
@@ -1410,6 +2558,23 @@ onBeforeUnmount(() => {
   .input-row {
     margin-bottom: 10px;
   }
+  /* 提前结束引导按钮样式 */
+  .skip-guide-button {
+    background: linear-gradient(135deg, rgba(64,158,255,0.95), rgba(64,158,255,0.75));
+    color: #fff;
+    border: 1px solid rgba(64,158,255,0.40);
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 10px 20px;
+    transition: all 0.3s ease;
+  }
+  .skip-guide-button:hover {
+    background: linear-gradient(135deg, rgba(64,158,255,1), rgba(64,158,255,0.85));
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(64,158,255,0.3);
+  }
   .agent-action {
     display: flex;
     justify-content: center;
@@ -1445,6 +2610,49 @@ onBeforeUnmount(() => {
   }
   .bubble-name { font-size: 12px; opacity: 0.85; margin-bottom: 6px; }
   .bubble-text { line-height: 1.65; font-size: 14px; white-space: pre-wrap; }
+  .thinking-text { color: rgba(64,158,255,0.85); font-style: italic; }
+  .thinking-dots { display: inline-block; margin-left: 4px; }
+  .thinking-dots span {
+    display: inline-block;
+    animation: thinking-dot 1.4s infinite;
+    animation-delay: 0s;
+  }
+  .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes thinking-dot {
+    0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-4px); }
+  }
+  .template-text { position: relative; }
+  .template-text::after {
+    content: '';
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: rgba(15,23,42,0.45);
+  }
+  /* 回答技巧轻提示样式（引导环节专用） */
+  .guide-tip-box {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: rgba(64,158,255,0.08);
+    border-left: 3px solid rgba(64,158,255,0.35);
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: rgba(15,23,42,0.75);
+  }
+  .guide-tip-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .guide-tip-icon {
+    color: #409EFF;
+    font-size: 14px;
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
   .avatar-ai { background: rgba(64,158,255,0.16); color: #409EFF; border: 1px solid rgba(64,158,255,0.20); }
   .avatar-user { background: rgba(15,23,42,0.88); color: #fff; border: 1px solid rgba(15,23,42,0.15); }
   
