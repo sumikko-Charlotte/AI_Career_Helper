@@ -1,0 +1,11 @@
+{
+  "name": "AI_Career_Helper",
+  "version": "1.0.0",
+  "description": "AI辅助的大学生生涯成长平台",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "start": "cd backend && python main.py"
+  },
+  "author": "",
+  "license": "MIT"
+}
