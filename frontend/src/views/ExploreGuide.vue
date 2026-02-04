@@ -16,24 +16,22 @@
               <div class="phase-desc">找准职业方向，积累基础认知</div>
             </div>
             <div class="phase-items">
+              <!-- ==========================================
+                   布局与内容调整：探索期板块功能
+                   保留：虚拟职业体验、生涯路径规划
+                   删除：简历模板库（已移至提升期模块）
+                   ========================================== -->
+              <el-tooltip content="完成职业倾向题并生成倾向报告，适合探索职业方向的学生" placement="top" effect="dark">
+                <div class="item" @click="navTo('virtual')">
+                  <el-icon><VideoPlay /></el-icon>
+                  <span>虚拟职业体验</span>
+                </div>
+              </el-tooltip>
+
               <el-tooltip content="生成个性化生涯路径建议，适合处在探索期的同学" placement="top" effect="dark">
                 <div class="item" @click="navTo('roadmap')">
                   <el-icon><Compass /></el-icon>
                   <span>生涯路径规划</span>
-                </div>
-              </el-tooltip>
-
-              <el-tooltip content="完成职业倾向题并生成倾向报告，适合探索职业方向的学生" placement="top" effect="dark">
-                <div class="item" @click="navTo('virtual')">
-                  <el-icon><VideoPlay /></el-icon>
-                  <span>虚拟职业企业</span>
-                </div>
-              </el-tooltip>
-
-              <el-tooltip content="甄选简历模板，快速搭建第一版简历" placement="top" effect="dark">
-                <div class="item" @click="navTo('templates')">
-                  <el-icon><Collection /></el-icon>
-                  <span>简历模板库</span>
                 </div>
               </el-tooltip>
             </div>
@@ -47,10 +45,20 @@
               <div class="phase-desc">打磨求职材料，提升核心竞争力</div>
             </div>
             <div class="phase-items">
+              <!-- ==========================================
+                   布局与内容调整：提升期板块功能顺序调整
+                   ========================================== -->
+              <el-tooltip content="甄选简历模板，快速搭建第一版简历" placement="top" effect="dark">
+                <div class="item" @click="navTo('templates')">
+                  <el-icon><Collection /></el-icon>
+                  <span>简历模板库</span>
+                </div>
+              </el-tooltip>
+
               <el-tooltip content="AI 辅助简历诊断，提升简历质量" placement="top" effect="dark">
                 <div class="item" @click="navTo('resume')">
                   <el-icon><DocumentChecked /></el-icon>
-                  <span>AI 简历</span>
+                  <span>AI 简历医生</span>
                 </div>
               </el-tooltip>
 
