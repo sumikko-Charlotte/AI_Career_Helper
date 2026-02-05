@@ -10,7 +10,7 @@ const uploadedTasks = ref([])
 const viewReportDialog = ref(false)
 const currentReport = ref('')
 const filterStatus = ref('all')
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
+const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 // 本地任务存储 key: competition_resume_task_list
 const TASK_KEY = 'competition_resume_task_list'

@@ -4,7 +4,7 @@ import { User, Message, Iphone, Upload, Postcard, Lock } from '@element-plus/ico
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
+const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 // 数据容器
 const adminInfo = ref({

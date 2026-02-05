@@ -6,7 +6,7 @@ import { useRouter, useRoute } from 'vue-router'
 const router = useRouter()
 const route = useRoute()
 const emit = defineEmits(['login-success'])
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
+const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 const SERVER_API = import.meta.env.VITE_USER_SERVER || 'http://127.0.0.1:3000' // 新增：用户持久化服务
 console.debug('[Login] API_BASE ->', API_BASE, 'SERVER_API ->', SERVER_API)
 

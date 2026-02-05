@@ -8,7 +8,7 @@ import MarkdownIt from 'markdown-it'
 // Use Vite env variable to configure backend base URL to avoid hard-coding ports.
 // If not set, fall back to port 8001 where backend runs by default (see backend/main.py).
 // Changes made: switched to `VITE_API_BASE`, added debug logs, improved error handling for requests. (Modified: 2026-01-30)
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
+const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 const md = new MarkdownIt()
 
 // Debug helper: expose resolved API endpoint in console
@@ -195,9 +195,8 @@ const loadQuestions = async (careerName) => {
   loadingCareer.value = careerName
   markdownRaw.value = ''
   try {
-    // 强制使用后端实际运行地址（确保不会被错配到其他端口）
-    const url = 'http://127.0.0.1:8001/api/virtual-career/questions'
-    console.debug('[VirtualExperiment] POST (hardcoded)', url, { career: careerName })
+    const url = `${API_BASE}/api/virtual-career/questions`
+    console.debug('[VirtualExperiment] POST', url, { career: careerName })
     // 从 Admin 配置读取系统提示词（localStorage），key: admin_ai_virtual_career
     const defaultVirtualPrompt = `你是一个沉浸式体验脚本生成器。根据用户选择的职业（例如“产品经理”），生成一套 15 道情景模拟题目，覆盖真实工作场景，句式简洁明了，便于用户做出选择题回答。每题给出 3 个选项。`
     const virtualPrompt = localStorage.getItem('admin_ai_virtual_career') || defaultVirtualPrompt

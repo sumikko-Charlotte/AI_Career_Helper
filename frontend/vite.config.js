@@ -10,13 +10,11 @@ export default defineConfig({
   plugins: [
     vue(),
     AutoImport({
-      // 自动导入 vue、vue-router 等常用函数，并为 Element Plus 启用按需导入
       imports: ['vue', 'vue-router'],
       resolvers: [ElementPlusResolver()],
       dts: 'src/auto-imports.d.ts'
     }),
     Components({
-      // 自动按需引入组件（支持 Element Plus）
       resolvers: [ElementPlusResolver()],
       dts: 'src/components.d.ts'
     })
@@ -24,6 +22,21 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src')
+    }
+  },
+  server: {
+    host: '0.0.0.0',
+    port: 5000,
+    allowedHosts: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      '/static': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      }
     }
   }
 })

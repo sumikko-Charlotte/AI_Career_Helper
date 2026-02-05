@@ -10,7 +10,8 @@ import uvicorn
 import json
 from typing import List
 import shutil # 👈 新增
-from fastapi.staticfiles import StaticFiles # 👈 新增
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from openai import OpenAI
 
 # ==========================================
@@ -29,8 +30,12 @@ from db_config import (
 )
 app = FastAPI()
 
-os.makedirs("static/avatars", exist_ok=True) # 自动创建文件夹
+os.makedirs("static/avatars", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+if os.path.exists(frontend_dist):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="frontend_assets")
 # --- 1. 跨域配置 (必不可少) ---
 app.add_middleware(
     CORSMiddleware,
@@ -1271,6 +1276,17 @@ def generate_interview_report(req: GenerateInterviewReportRequest):
         return {"success": True, "markdown": markdown}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+# ==========================================
+#  Production: Serve Vue frontend
+# ==========================================
+@app.get("/{full_path:path}")
+async def serve_frontend(full_path: str):
+    """Serve Vue frontend for non-API routes in production"""
+    frontend_index = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist", "index.html")
+    if os.path.exists(frontend_index):
+        return FileResponse(frontend_index)
+    return {"message": "Frontend not built. Run 'npm run build' in frontend directory."}
 
 # ==========================================
 #  启动入口

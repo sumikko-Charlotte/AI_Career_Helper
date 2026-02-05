@@ -4,7 +4,7 @@ import { VideoPlay, Trophy, Timer, Star } from '@element-plus/icons-vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 // 状态控制
 const currentStep = ref(0) // 0:选择角色, 1:游戏中, 2:结算

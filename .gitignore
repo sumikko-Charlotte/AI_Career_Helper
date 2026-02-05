@@ -1,2 +1,15 @@
-﻿.env
+.env
 __pycache__/
+*.pyc
+*.pyo
+.pythonlibs/
+.cache/
+.upm/
+.replit
+replit.nix
+.config/
+node_modules/
+dist/
+.vite/
+*.log
+.DS_Store
