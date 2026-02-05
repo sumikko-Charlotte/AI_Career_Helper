@@ -1,12 +1,12 @@
 <script setup>
 import { ref, onMounted } from 'vue' // Removed computed as we will bind directly
-import axios from 'axios'
+import request, { API_BASE } from '@/utils/request.js'
+import axios from 'axios' // 保留用于 SERVER_API 请求
 import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
 const emit = defineEmits(['login-success'])
-const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 const SERVER_API = import.meta.env.VITE_USER_SERVER || 'http://127.0.0.1:3000' // 新增：用户持久化服务
 console.debug('[Login] API_BASE ->', API_BASE, 'SERVER_API ->', SERVER_API)
 
@@ -87,21 +87,11 @@ const handleLogin = async () => {
   loading.value = true
   try {
     console.log('🚀 Sending login request')
-    // 确保请求地址格式正确：如果 API_BASE 为空，使用相对路径；否则使用完整路径
-    const loginUrl = API_BASE ? `${API_BASE}/api/login` : '/api/login'
-    const response = await axios.post(
-      loginUrl,
-      {
-        username: loginForm.value.username,
-        password: loginForm.value.password
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true'
-        }
-      }
-    )
+    // 使用统一的 request 实例，自动包含 baseURL 和请求头
+    const response = await request.post('/api/login', {
+      username: loginForm.value.username,
+      password: loginForm.value.password
+    })
 
     console.log('✅ Response:', response.data)
     
@@ -162,18 +152,8 @@ const handleRegister = async () => {
 
   loading.value = true
   try {
-    // 确保请求地址格式正确：如果 API_BASE 为空，使用相对路径；否则使用完整路径
-    const registerUrl = API_BASE ? `${API_BASE}/api/register` : '/api/register'
-    const response = await axios.post(
-      registerUrl,
-      registerForm.value,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true'
-        }
-      }
-    )
+    // 使用统一的 request 实例，自动包含 baseURL 和请求头
+    const response = await request.post('/api/register', registerForm.value)
     if (response.data.success) {
       alert('注册成功！请登录')
       isLogin.value = true 
