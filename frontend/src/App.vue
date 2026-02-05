@@ -31,13 +31,10 @@ const route = useRoute()
 // ==========================================
 // 2. 核心变量定义 (State) - 放在最前防止报错
 // ==========================================
-<<<<<<< HEAD
+// 合并冲突：保留使用可空合并运算符的 API_BASE 定义，兼容环境变量未配置的情况
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
-=======
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
 // 报告生成降级开关（开发/测试环境可通过 .env 配置，例如：VITE_INTERVIEW_REPORT_NO_FALLBACK=true）
 const INTERVIEW_REPORT_NO_FALLBACK = import.meta.env.VITE_INTERVIEW_REPORT_NO_FALLBACK === 'true'
->>>>>>> 9ae279f5c092efa28e3ff6f63bbaf68b75d16bc2
 console.debug('[App] API_BASE ->', API_BASE)
 const currentUser = ref(null)
 const activeMenu = ref('0')
