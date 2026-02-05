@@ -1697,10 +1697,12 @@ const generateInterviewReport = async () => {
   ElMessage.closeAll()
   ElMessage.info('正在生成个性化面试分析报告，请稍候...')
   
+  // 记录报告生成开始时间：优先使用面试真实开始时间，否则使用当前时间（用于计算 API 请求耗时）
+  const startedAt = interviewStartTime.value || Date.now()
+  
   try {
     const targetRole = currentUser.value?.target_role || interviewGuide.targetRole || interviewGuide.templateRole || '未指定'
     const meta = buildInterviewMeta(chatHistory.value)
-    const startedAt = Date.now()
     
     const res = await axios.post(
       `${API_BASE}/api/generate-interview-report`,
@@ -1742,7 +1744,8 @@ const generateInterviewReport = async () => {
     ElMessage.closeAll()
     ElMessage.warning('网络问题，无法生成个性化报告，已为您生成适配本次面试的通用模板报告')
   } catch (e) {
-    const elapsed = Date.now() - (startedAt || Date.now())
+    // startedAt 已在 try 块之前定义，直接使用即可
+    const elapsed = Date.now() - startedAt
     const status = e?.response?.status
     console.error('[InterviewReport] 调用 DeepSeek 失败：', {
       status,
