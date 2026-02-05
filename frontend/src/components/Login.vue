@@ -89,7 +89,15 @@ const handleLogin = async () => {
     console.log('🚀 Sending login request')
     const response = await axios.post(
       `${API_BASE}/api/login`,
-      loginForm.value
+      {
+        username: loginForm.value.username,
+        password: loginForm.value.password
+      },
+      {
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
+        }
+      }
     )
 
     console.log('✅ Response:', response.data)
@@ -151,7 +159,15 @@ const handleRegister = async () => {
 
   loading.value = true
   try {
-    const response = await axios.post(`${API_BASE}/api/register`, registerForm.value)
+    const response = await axios.post(
+      `${API_BASE}/api/register`,
+      registerForm.value,
+      {
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
+        }
+      }
+    )
     if (response.data.success) {
       alert('注册成功！请登录')
       isLogin.value = true 
