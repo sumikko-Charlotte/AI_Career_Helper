@@ -366,7 +366,7 @@ const toggleVoiceInput = () => {
 // ==========================================
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const goToResumeDoctor = () => window.open('http://localhost:8501', '_blank')
+const goToResumeDoctor = () => window.open('https://unphrased-letha-lumpiest.ngrok-free.dev/resume-doctor', '_blank')
 
 const scrollChatToBottom = () => {
   const el = document.querySelector('.chat-window')
