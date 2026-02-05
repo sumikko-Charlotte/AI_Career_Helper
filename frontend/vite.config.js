@@ -30,11 +30,11 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'https://unphrased-letha-lumpiest.ngrok-free.dev',
         changeOrigin: true
       },
       '/static': {
-        target: 'http://localhost:8000',
+        target: 'https://unphrased-letha-lumpiest.ngrok-free.dev',
         changeOrigin: true
       }
     }
