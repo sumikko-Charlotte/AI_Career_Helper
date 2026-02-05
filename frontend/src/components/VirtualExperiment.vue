@@ -6,7 +6,7 @@ import { Search } from '@element-plus/icons-vue'
 import MarkdownIt from 'markdown-it'
 
 // Use Vite env variable to configure backend base URL to avoid hard-coding ports.
-// If not set, fall back to port 8001 where backend runs by default (see backend/main.py).
+// If not set, fall back to ngrok public address (https://unphrased-letha-lumpiest.ngrok-free.dev).
 // Changes made: switched to `VITE_API_BASE`, added debug logs, improved error handling for requests. (Modified: 2026-01-30)
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 const md = new MarkdownIt()
@@ -218,7 +218,7 @@ const loadQuestions = async (careerName) => {
   } catch (e) {
     // 友好错误提示：区分网络错误、404 与 5xx
     if (!e.response) {
-      ElMessage.error('网络异常或无法连接后端，请检查后端是否已启动并确认 VITE_API_BASE 指向正确地址（例如 http://127.0.0.1:8000）')
+      ElMessage.error('网络异常或无法连接后端，请检查后端是否已启动并确认 VITE_API_BASE 指向正确地址（例如 https://unphrased-letha-lumpiest.ngrok-free.dev）')
     } else if (e.response.status === 404) {
       ElMessage.error('题目生成接口不存在（404）。请确认后端是否包含 POST /api/virtual-career/questions 或更新前端配置')
     } else if (e.response.status >= 500) {
