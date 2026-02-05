@@ -120,8 +120,8 @@ const handleLogin = async () => {
       
       // 🟢 关键修复点 2：现在 user 变量存在了，判断就不会报错了
       if (user.grade === '管理员' || user.username === 'admin') {
-          console.log('👑 检测到管理员身份，跳转后台')
-          await router.push('/admin/dashboard')
+          console.log('👑 检测到管理员身份，跳转后台功能引导页')
+          await router.push('/admin/guide')
       } else {
           // 普通用户：登录成功后自动跳转到过渡导航页（第3页）
           emit('login-success', user)

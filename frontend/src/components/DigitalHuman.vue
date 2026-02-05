@@ -1,18 +1,24 @@
 <script setup>
-import { defineProps } from 'vue'
+import { computed } from 'vue'
 
-// ============================================================
-// 👇 关键修改：直接使用字符串路径 👇
-// ============================================================
-// '/idle.mp4' 代表直接去 public 文件夹里找，这样就不会报 416 错误了
-const idleVideoPath = '/idle.mp4'
-const talkingVideoPath = '/talking.mp4'
-
-defineProps({
+const props = defineProps({
   isTalking: {
     type: Boolean,
     default: false
+  },
+  gender: {
+    type: String,
+    default: 'female' // 'female' 或 'male'
   }
+})
+
+// 根据性别动态加载视频路径
+const staticVideoPath = computed(() => {
+  return props.gender === 'female' ? '/female_static.mp4' : '/male_static.mp4'
+})
+
+const speakingVideoPath = computed(() => {
+  return props.gender === 'female' ? '/female_speaking.mp4' : '/male_speaking.mp4'
 })
 </script>
 
@@ -22,7 +28,7 @@ defineProps({
       <video
         v-show="!isTalking"
         class="digital-video"
-        :src="idleVideoPath"
+        :src="staticVideoPath"
         autoplay
         loop
         muted
@@ -33,7 +39,7 @@ defineProps({
       <video
         v-show="isTalking"
         class="digital-video"
-        :src="talkingVideoPath"
+        :src="speakingVideoPath"
         autoplay
         loop
         muted

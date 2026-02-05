@@ -5,13 +5,13 @@
 import { ref, reactive, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 import axios from 'axios'
 import * as echarts from 'echarts'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import html2canvas from 'html2canvas'
 import MarkdownIt from 'markdown-it'
 import {
   Monitor, ChatDotRound, DocumentChecked, User, Odometer, MagicStick,
   Calendar, SwitchButton, CircleCheck, VideoPlay, Trophy, Loading, Compass, Aim,
-  Microphone, Clock, Collection, InfoFilled
+  Microphone, Clock, Collection, InfoFilled, ArrowRight
 } from '@element-plus/icons-vue'
 
 // 引入组件
@@ -31,7 +31,13 @@ const route = useRoute()
 // ==========================================
 // 2. 核心变量定义 (State) - 放在最前防止报错
 // ==========================================
+<<<<<<< HEAD
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+=======
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8001'
+// 报告生成降级开关（开发/测试环境可通过 .env 配置，例如：VITE_INTERVIEW_REPORT_NO_FALLBACK=true）
+const INTERVIEW_REPORT_NO_FALLBACK = import.meta.env.VITE_INTERVIEW_REPORT_NO_FALLBACK === 'true'
+>>>>>>> 9ae279f5c092efa28e3ff6f63bbaf68b75d16bc2
 console.debug('[App] API_BASE ->', API_BASE)
 const currentUser = ref(null)
 const activeMenu = ref('0')
@@ -89,8 +95,28 @@ const useTemplateMode = ref(false) // 用户主动选择模板模式
 const templateQuestionIndex = ref(0) // 模板问题索引（用于轮次逻辑）
 // --- 模拟面试：引导环节状态 ---
 const isGuidingPhase = ref(true) // 是否在引导环节（true=引导环节，false=正式面试）
-const guideRoundCount = ref(0) // 引导环节已完成的轮次（3-5轮后自动进入正式面试）
-const guideMaxRounds = 5 // 引导环节最大轮次
+// 引导环节只负责收集基础信息（年级、岗位），不再“凑轮数”
+const guideRoundCount = ref(0) // 已完成的引导轮次（主要用于兜底保护，避免死循环）
+const guideMaxRounds = 5 // 安全上限（极端情况下强制跳出引导）
+// --- 模拟面试：面试终止 & 提问状态 ---
+const isInterviewEnded = ref(false) // 面试是否已终止
+const interviewReportLoading = ref(false) // 报告生成中
+const interviewReportMarkdown = ref('') // 生成的报告内容
+const lastInterviewQuestionText = ref('') // 上一次提问内容（用于去重）
+const interviewStartTime = ref(null) // 面试开始时间（首条用户回答时间）
+const interviewEndTime = ref(null) // 面试结束时间（终止时刻）
+// 正式面试问题追踪
+const usedQuestionIds = ref(new Set()) // 已使用的问题 ID
+const usedDimensions = ref(new Set()) // 近期已使用的问题维度
+// --- 面试官性别选择 ---
+const interviewerGender = ref(localStorage.getItem('interviewer_gender') || 'female') // 默认女性，从缓存读取
+const genderSelectionVisible = ref(true) // 性别选择组件是否可见（引导环节开始时显示）
+
+// --- 语音输入状态 ---
+const voiceLang = ref('zh-CN') // 语音识别语言：默认中文
+const voiceSeconds = ref(0) // 当前录音时长（秒）
+let voiceAutoStopTimer = null
+let voiceDurationTimer = null
 
 // --- 生涯规划变量 ---
 const roadmapGrade = ref('大一')
@@ -184,11 +210,33 @@ const getBestVoice = () => {
 }
 
 // ============================================
-// 👇 强制启用“自然语音”版 (请替换原有的 speakText)
+// 👇 语音合成：自然语音 + 文本预处理 (过滤表情/图片等噪音)
 // ============================================
 
 // 全局变量防止秒断
 let currentUtterance = null 
+
+// 语音播报前的文本清洗：去掉图片/表情等描述，仅保留纯文本内容
+const _cleanSpeechText = (raw) => {
+  if (!raw) return ''
+  let text = String(raw)
+
+  // 1. 去掉 Markdown 图片语法 ![alt](url)
+  text = text.replace(/!\[[^\]]*]\([^)]*\)/g, '')
+
+  // 2. 去掉形如 [image] / [图片] / [表情] / [xxx 表情 xxx] 的占位内容
+  text = text.replace(/\[\s*(image|img|图片|表情|emoji|表情包)\s*]/gi, '')
+  text = text.replace(/\[[^\]]*(image|img|图片|表情|emoji|表情包)[^\]]*]/gi, '')
+
+  // 3. 去掉可能的 HTML 标签占位（如 <image ...>）
+  text = text.replace(/<[^>]+>/g, '')
+
+  // 4. 多个空行/空白压缩
+  text = text.replace(/\s{2,}/g, ' ')
+  text = text.replace(/\n{3,}/g, '\n\n')
+
+  return text.trim()
+}
 
 const speakText = (text) => {
   if (!window.speechSynthesis) return
@@ -196,25 +244,35 @@ const speakText = (text) => {
   // 1. 强制打断之前的发音
   window.speechSynthesis.cancel()
 
-  // 2. 创建发音请求
-  currentUtterance = new SpeechSynthesisUtterance(text)
+  // 2. 创建发音请求（先做文本清洗，过滤表情/图片描述等噪音）
+  const cleanText = _cleanSpeechText(text)
+  if (!cleanText) return
+  currentUtterance = new SpeechSynthesisUtterance(cleanText)
 
-  // 3. 🔥 核心修改：精准挑选最逼真的声音
+  // 3. 🔥 核心修改：根据用户选择的面试官性别选择音色
   const voices = window.speechSynthesis.getVoices()
   
-  // 优先级规则：
-  // 第一名：Edge 的 "Xiaoxiao" (晓晓 - 最自然)
-  // 第二名：Edge 的 "Yunxi" (云希 - 男声，也很自然)
-  // 第三名：任何带有 "Natural" (自然) 标签的中文声音
-  // 第四名：Google 的中文 (Chrome 里的)
-  // 第五名：实在没有，才用保底的系统中文
-  
-  const bestVoice = 
-    voices.find(v => v.name.includes('Xiaoxiao')) || 
-    voices.find(v => v.name.includes('Yunxi')) || 
-    voices.find(v => v.name.includes('Natural') && v.lang.includes('zh')) || 
-    voices.find(v => v.name.includes('Google') && v.lang.includes('zh')) ||
-    voices.find(v => v.lang.includes('zh'))
+  // 根据性别选择音色
+  let bestVoice = null
+  if (interviewerGender.value === 'female') {
+    // 女性面试官：优先使用女声音色
+    bestVoice = 
+      voices.find(v => v.name.includes('Xiaoxiao')) || 
+      voices.find(v => v.name.includes('Xiaoyi')) ||
+      voices.find(v => v.name.includes('Natural') && v.lang.includes('zh') && (v.name.toLowerCase().includes('female') || v.name.toLowerCase().includes('女'))) ||
+      voices.find(v => v.name.includes('Google') && v.lang.includes('zh')) ||
+      voices.find(v => v.lang.includes('zh') && v.gender === 'female') ||
+      voices.find(v => v.lang.includes('zh'))
+  } else {
+    // 男性面试官：优先使用男声音色
+    bestVoice = 
+      voices.find(v => v.name.includes('Yunxi')) || 
+      voices.find(v => v.name.includes('Yunyang')) ||
+      voices.find(v => v.name.includes('Natural') && v.lang.includes('zh') && (v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('男'))) ||
+      voices.find(v => v.name.includes('Google') && v.lang.includes('zh')) ||
+      voices.find(v => v.lang.includes('zh') && v.gender === 'male') ||
+      voices.find(v => v.lang.includes('zh'))
+  }
 
   if (bestVoice) {
     currentUtterance.voice = bestVoice
@@ -255,6 +313,12 @@ const toggleVoiceInput = () => {
 
   // 停止录音
   if (isRecording.value) {
+    if (voiceAutoStopTimer) clearTimeout(voiceAutoStopTimer)
+    if (voiceDurationTimer) clearInterval(voiceDurationTimer)
+    voiceAutoStopTimer = null
+    voiceDurationTimer = null
+    voiceSeconds.value = 0
+
     if (recognitionInstance) recognitionInstance.stop()
     isRecording.value = false
     return
@@ -262,15 +326,33 @@ const toggleVoiceInput = () => {
 
   // 开始录音
   recognitionInstance = new SpeechRecognition()
-  recognitionInstance.lang = 'zh-CN'
+  recognitionInstance.lang = voiceLang.value || 'zh-CN'
   recognitionInstance.interimResults = false
 
   recognitionInstance.onstart = () => {
     isRecording.value = true
-    ElMessage.success('请说话...')
+    voiceSeconds.value = 0
+
+    if (voiceDurationTimer) clearInterval(voiceDurationTimer)
+    voiceDurationTimer = setInterval(() => {
+      voiceSeconds.value += 1
+    }, 1000)
+
+    if (voiceAutoStopTimer) clearTimeout(voiceAutoStopTimer)
+    // 最长录音 60 秒，超时自动停止
+    voiceAutoStopTimer = setTimeout(() => {
+      if (recognitionInstance) recognitionInstance.stop()
+    }, 60000)
+
+    ElMessage.success(`开始录音（${voiceLang.value === 'en-US' ? 'English' : '中文'}），请在 60 秒内完成回答`)
   }
   recognitionInstance.onend = () => {
     isRecording.value = false
+    if (voiceAutoStopTimer) clearTimeout(voiceAutoStopTimer)
+    if (voiceDurationTimer) clearInterval(voiceDurationTimer)
+    voiceAutoStopTimer = null
+    voiceDurationTimer = null
+    voiceSeconds.value = 0
   }
   recognitionInstance.onresult = (event) => {
     const text = event.results[0][0].transcript
@@ -588,6 +670,60 @@ const interviewTemplates = {
     }
   ]
 }
+
+// --- 正式面试：问题池（按维度划分，至少 8-10 个问题，确保不重复） ---
+const interviewQuestionPool = [
+  {
+    id: 'basic_1',
+    dimension: '专业基础',
+    text: '请用面试官能听懂的方式，概括一下你目前在本专业（或目标岗位方向）最扎实的三门课程或核心知识点，并简单说明理由。'
+  },
+  {
+    id: 'basic_2',
+    dimension: '专业基础',
+    text: '回想你最近一次觉得“学得比较吃力”的专业知识或技术点，它是什么？你是通过哪些方式把它啃下来的？'
+  },
+  {
+    id: 'project_1',
+    dimension: '项目/实习经历',
+    text: '请从你的课程作业、项目或实习中，选一个你最有成就感的经历，用 STAR 结构讲一讲（背景-任务-行动-结果）。'
+  },
+  {
+    id: 'project_2',
+    dimension: '项目/实习经历',
+    text: '有没有一个项目/实习经历，是一开始推进得不顺利，但最后你找到解决方案的？请重点讲讲你具体做了什么。'
+  },
+  {
+    id: 'motivation_1',
+    dimension: '求职动机',
+    text: '如果现在就要投递与你当前模拟方向最相关的岗位，你会怎么向面试官说明“为什么想做这个方向”？'
+  },
+  {
+    id: 'motivation_2',
+    dimension: '求职动机',
+    text: '你觉得自己和其他同专业同学相比，在求职这件事上最大的优势和短板分别是什么？请各举 1-2 点。'
+  },
+  {
+    id: 'future_1',
+    dimension: '未来规划',
+    text: '站在 1-2 年的时间尺度，如果拿到了理想岗位/方向的机会，你最希望自己在哪些方面有明显成长？'
+  },
+  {
+    id: 'future_2',
+    dimension: '未来规划',
+    text: '假设你还有一年的在校时间，可以自主安排，你会如何在“课程、项目/科研、实习、竞赛/比赛”之间做时间分配？为什么？'
+  },
+  {
+    id: 'scenario_1',
+    dimension: '场景应变',
+    text: '如果在真实面试中，面试官问了一个你完全不会的问题，你一般会怎么处理这种场景？请结合你真实的做法或想法来回答。'
+  },
+  {
+    id: 'scenario_2',
+    dimension: '场景应变',
+    text: '假设你进入了一个新团队，前两周发现自己在知识和效率上都落后于同组同学，你会怎么做？请具体说说你的应对思路。'
+  }
+]
 
 // 获取引导环节模板回复（降级备用方案）
 const getGuideTemplateResponse = (userMsg) => {
@@ -994,7 +1130,16 @@ const callDeepSeekWithFastTimeout = async (userMsg) => {
 // --- 发送消息 (已集成语音 + 优化响应速度) ---
 const sendMessage = async () => {
   if (!chatInput.value || chatSending.value) return
+  if (isInterviewEnded.value) {
+    ElMessage.warning('面试已终止，无法继续发送消息')
+    return
+  }
   const userMsg = chatInput.value
+
+  // 记录面试开始时间：第一条用户回答发送时
+  if (!interviewStartTime.value) {
+    interviewStartTime.value = Date.now()
+  }
   
   chatHistory.value.push({ role: 'user', content: userMsg })
   chatInput.value = ''
@@ -1009,9 +1154,10 @@ const sendMessage = async () => {
     
     // 检测是否是第一次用户回复（且还在引导环节），如果是则发送引导话术
     if (isGuidingPhase.value && chatHistory.value.filter(m => m.role === 'user').length === 1) {
-      // 用户第一次回复，发送引导话术
-      const guideText = '你好呀！我是你的专属模拟面试官😊 在正式面试前，我们先轻松聊一聊，帮你梳理一下自己的情况～可以先简单说说你的学历阶段和想面试的岗位吗？'
-      const guideTip = '回答学历和岗位时，可以简洁明了：例如"我是大二，想体验前端工程师岗位"～'
+      // 用户第一次回复，隐藏性别选择，发送引导话术（仅文本，避免表情说明被语音朗读）
+      genderSelectionVisible.value = false
+      const guideText = '你好呀，我是你的专属 AI 模拟面试官。在正式面试前，我们先轻松聊一聊，帮你梳理一下自己的情况。可以先简单说说你的学历阶段和想面试的岗位吗？'
+      const guideTip = '回答学历和岗位时，可以简洁明了：例如“我是大二，想体验前端工程师岗位”。'
       
       // 在用户消息后添加引导消息
       chatHistory.value.push({
@@ -1084,7 +1230,7 @@ const sendMessage = async () => {
     let isGuide = false
     
     if (isGuidingPhase.value) {
-      // ========== 引导环节：AI优先，模板兜底 ==========
+      // ========== 引导环节：仅用于收集年级 & 意向岗位等基础信息 ==========
       if (useTemplateMode.value) {
         // 用户主动选择模板模式
         const templateRes = getGuideTemplateResponse(userMsg)
@@ -1111,23 +1257,75 @@ const sendMessage = async () => {
         }
       }
       
-      // 检查是否完成引导环节（检测过渡话术或达到最大轮次）
+      // 引导轮次计数（仅作兜底保护）
       guideRoundCount.value++
-      if (finalText.includes('开始正式的岗位面试') || guideRoundCount.value >= guideMaxRounds) {
-        // 引导环节完成，切换到正式面试
+
+      // 引导完成条件：
+      // 1）已成功识别出年级 & 岗位；或
+      // 2）达到安全轮数上限
+      const hasGrade = !!interviewGuide.grade
+      const hasRole = !!(interviewGuide.targetRole || interviewGuide.templateRole)
+      const shouldFinishGuide =
+        (hasGrade && hasRole) ||
+        guideRoundCount.value >= guideMaxRounds ||
+        finalText.includes('开始正式的岗位面试')
+
+      if (shouldFinishGuide) {
         isGuidingPhase.value = false
         guideRoundCount.value = 0
         interviewGuide.guideIndex = 0
       }
     } else {
-      // ========== 正式面试环节：原有逻辑 ==========
-      // 如果用户主动选择模板模式，直接使用模板
+      // ========== 正式面试环节：问题池 + AI 优先，模板兜底 ==========
+      // 先从问题池中选择一个不重复、维度不同的问题，作为本轮核心问题
+      const pickQuestionFromPool = () => {
+        const usedIds = usedQuestionIds.value
+        const usedDims = usedDimensions.value
+
+        // 过滤掉已使用的问题，并优先选择“本轮尚未用过维度”的题目
+        const unused = interviewQuestionPool.filter(q => !usedIds.has(q.id))
+        if (!unused.length) return null
+
+        const candidatesDiffDim = unused.filter(q => !usedDims.has(q.dimension))
+        const candidates = candidatesDiffDim.length ? candidatesDiffDim : unused
+
+        // 简单随机选一个
+        const idx = Math.floor(Math.random() * candidates.length)
+        return candidates[idx]
+      }
+
+      const nextQuestion = pickQuestionFromPool()
+
+      // 如果问题池已经耗尽，则触发提前终止
+      if (!nextQuestion) {
+        isInterviewEnded.value = true
+        if (!interviewEndTime.value) {
+          interviewEndTime.value = Date.now()
+        }
+        chatHistory.value.push({
+          role: 'ai',
+          content: '本次模拟面试已完成核心问题考察，感谢你的认真作答～欢迎稍后再来练习其它方向或更多轮次的面试。',
+          _isGuide: false,
+          _isLoading: false,
+          _isTemplate: false
+        })
+        chatSending.value = false
+        await nextTick()
+        scrollChatToBottom()
+        return
+      }
+
+      // 标记问题已使用
+      usedQuestionIds.value.add(nextQuestion.id)
+      usedDimensions.value.add(nextQuestion.dimension)
+
+      // 如果用户主动选择模板模式，直接使用模板为当前问题生成“折叠提示”（不内嵌在问题文本里）
       if (useTemplateMode.value) {
-        const templateRes = getTemplateResponse(userMsg)
-        // 模板回复已包含完整内容（回复+问题），直接使用
-        finalText = templateRes.reply
-        tips = templateRes.tips || ''
+        let templateRes = getTemplateResponse(userMsg)
+        finalText = nextQuestion.text
+        tips = templateRes?.tips || _defaultInterviewTips(nextQuestion.text)
         isTemplate = true
+        lastInterviewQuestionText.value = nextQuestion.text
       } else {
         // 检查本地缓存（高频问题）
         let cachedResponse = getCachedResponse(userMsg)
@@ -1141,10 +1339,26 @@ const sendMessage = async () => {
           const aiResult = await callDeepSeekWithFastTimeout(userMsg)
           
           if (aiResult) {
-            // AI成功返回
+            // AI成功返回：让 AI 结合问题池中的问题生成更贴合的问题话术
             tips = aiResult.tips || ''
-            finalText = aiResult.reply
-            if (aiResult.question) finalText = `${aiResult.reply}\n\n👉 ${aiResult.question}`
+
+            let replyText = aiResult.reply || ''
+            // 问题以池中问题为主，若 AI 也返回了 question，则只在非重复时附加
+            let baseQuestionText = nextQuestion.text
+            let extraQuestionText = aiResult.question || ''
+
+            // 重复检测：如果 AI 给的 question 与上一次或当前问题文案重复，则忽略 AI 的 question
+            if (extraQuestionText && (extraQuestionText === lastInterviewQuestionText.value || extraQuestionText === baseQuestionText)) {
+              extraQuestionText = ''
+            }
+
+            let finalQuestionText = baseQuestionText
+            if (extraQuestionText) {
+              finalQuestionText = `${baseQuestionText}\n追问：${extraQuestionText}`
+            }
+
+            finalText = `${replyText}\n\n👉 ${finalQuestionText}`
+            lastInterviewQuestionText.value = finalQuestionText
 
             if (jobsData.value.length > 0 && Math.random() > 0.5) { 
               const randomJob = jobsData.value[Math.floor(Math.random() * jobsData.value.length)]
@@ -1154,14 +1368,12 @@ const sendMessage = async () => {
             // 缓存高频问题的回答
             setCachedResponse(userMsg, { content: finalText, tips })
           } else {
-            // AI超时或失败，降级到模板
-            const templateRes = getTemplateResponse(userMsg)
-            // 模板回复已包含完整内容（回复+问题），直接使用
-            finalText = templateRes.reply
-            tips = templateRes.tips || ''
+            // AI超时或失败，降级到模板（问题文本不带提示，提示仅在下方折叠区展示）
+            let templateRes = getTemplateResponse(userMsg)
+            finalText = `${nextQuestion.text}\n\n[模拟回复]`
+            tips = templateRes?.tips || _defaultInterviewTips(nextQuestion.text)
             isTemplate = true
-            // 在模板回复末尾添加细微提示（使用纯文本，避免HTML解析问题）
-            finalText += '\n\n[模拟回复]'
+            lastInterviewQuestionText.value = nextQuestion.text
           }
         }
       }
@@ -1214,6 +1426,14 @@ const sendMessage = async () => {
   }
 }
 
+// --- 选择面试官性别 ---
+const selectInterviewerGender = (gender) => {
+  interviewerGender.value = gender
+  localStorage.setItem('interviewer_gender', gender)
+  genderSelectionVisible.value = false
+  ElMessage.success(`已选择${gender === 'female' ? '女性' : '男性'}面试官`)
+}
+
 // --- 提前结束引导，开始正式面试 ---
 const skipGuideAndStartInterview = () => {
   // 检查用户是否已选择岗位
@@ -1226,6 +1446,9 @@ const skipGuideAndStartInterview = () => {
   isGuidingPhase.value = false
   guideRoundCount.value = 0
   interviewGuide.guideIndex = 0
+  // 重置正式面试问题跟踪
+  usedQuestionIds.value = new Set()
+  usedDimensions.value = new Set()
   
   // 发送过渡消息
   const transitionText = '好的，我大概了解你的情况啦！那我们现在开始正式的岗位面试吧，问题会贴合你刚才说的信息，不用紧张，大胆回答就好～'
@@ -1303,6 +1526,266 @@ const handleApply = async (job) => {
   } finally {
     job._loading = false
   }
+}
+
+// --- 面试终止功能 ---
+const endInterview = () => {
+  ElMessageBox.confirm(
+    '确定要终止本次面试吗？终止后将无法继续对话，但可以生成面试分析报告。',
+    '确认终止面试',
+    {
+      confirmButtonText: '确定终止',
+      cancelButtonText: '取消',
+      type: 'warning',
+      confirmButtonClass: 'el-button--danger'
+    }
+  ).then(() => {
+    isInterviewEnded.value = true
+    // 记录终止时间
+    if (!interviewEndTime.value) {
+      interviewEndTime.value = Date.now()
+    }
+    // 清理本轮问题跟踪，避免下一次面试被上一次残留影响
+    usedQuestionIds.value = new Set()
+    usedDimensions.value = new Set()
+    chatSending.value = false
+    // 添加终止消息
+    chatHistory.value.push({
+      role: 'ai',
+      content: '面试已终止。您可以点击下方按钮生成面试分析报告，查看详细评价和改进建议。',
+      _isGuide: false,
+      _isLoading: false,
+      _isTemplate: false
+    })
+    ElMessage.success('面试已终止')
+    nextTick(() => scrollChatToBottom())
+  }).catch(() => {
+    // 用户取消，不做任何操作
+  })
+}
+
+// --- 元信息提取：面试方向 / 身份 / 时长 / 生成时间 ---
+const buildInterviewMeta = (history) => {
+  const allText = history.map(m => String(m.content || '')).join('\n')
+
+  // 面试方向：优先使用已有结构化字段，其次从文本中粗略推断，最后给默认值
+  let direction =
+    interviewGuide.targetRole ||
+    interviewGuide.templateRole ||
+    (currentUser.value && currentUser.value.target_role) ||
+    ''
+  if (!direction) {
+    if (/前端|前端工程师/i.test(allText)) direction = '前端相关岗位'
+    else if (/算法|算法工程师/i.test(allText)) direction = '算法相关岗位'
+    else if (/后端|Java|Python/i.test(allText)) direction = '后端/开发相关岗位'
+    else direction = '专业相关岗位'
+  }
+
+  // 面试者身份：本科生 / 研究生（如均未明显出现则留空）
+  let identity = ''
+  const bachelorPattern = /(大一|大二|大三|大四|本科|本科学历)/
+  const masterPattern = /(研一|研二|研三|研究生|硕士|博士)/
+  const isBachelor = bachelorPattern.test(allText)
+  const isMaster = masterPattern.test(allText)
+  if (isMaster) {
+    identity = '研究生'
+  } else if (isBachelor) {
+    identity = '本科生'
+  } else {
+    identity = ''
+  }
+
+  // 面试时长：从开始/结束时间计算，至少 1 分钟
+  let durationMinutes = 0
+  if (interviewStartTime.value) {
+    const endTs = interviewEndTime.value || Date.now()
+    const diff = endTs - interviewStartTime.value
+    if (diff > 0) {
+      durationMinutes = Math.max(1, Math.round(diff / 60000))
+    }
+  }
+
+  // 报告生成时间
+  const now = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const generatedAt = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
+    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
+
+  return {
+    direction,
+    identity,
+    durationMinutes,
+    generatedAt
+  }
+}
+
+// --- 通用面试分析模板（降级模式，自动填充大学生场景） ---
+const buildFallbackInterviewReport = (history) => {
+  const meta = buildInterviewMeta(history)
+  const userAnswers = history
+    .filter(m => m.role === 'user')
+    .map((m, idx) => ({
+      index: idx + 1,
+      content: String(m.content || '').trim()
+    }))
+
+  const answersMd = userAnswers.length
+    ? userAnswers.map(a => `### 题目 ${a.index} · 回答表现\n\n- 用户原始回答：\n\n${a.content || '（无内容）'}\n\n- 逻辑性：整体结构基本清晰，可进一步使用「总—分—总」或 STAR 结构强化层次感。\n- 内容完整性：建议补充更具体的课程/项目/实践细节，以及可量化的结果。\n- 表达清晰度：表达大体清楚，如能适当分点、控制语速，会更利于面试官理解。\n- 针对性：可更多结合目标岗位/方向的核心能力要求来组织回答。\n`).join('\n')
+    : '当前对话记录中没有检测到清晰的回答内容。建议下次面试时使用完整句子作答，并尽量围绕“是什么 / 为什么 / 怎么做 / 结果如何”来组织回答。\n'
+
+  const standardMd = userAnswers.length
+    ? userAnswers.map(a => `### 题目 ${a.index} · 参考作答结构（大学生通用）\n\n- 开场结论：先用 1–2 句话给出核心观点或结果。\n- 背景（Situation）：交代时间、场景、身份（如大几/研究生阶段）、任务目标。\n- 任务（Task）：说明你在这件事中的具体职责或要解决的问题。\n- 行动（Action）：分点描述你做了哪些关键动作、做出过哪些权衡或思考。\n- 结果（Result）：用数据或具体变化说明效果，可以补充个人收获与反思。\n`).join('\n')
+    : '你可以为常见高频题（如自我介绍、项目经历、实习经历、失败经历、优缺点等）分别准备一套 STAR 结构的回答草稿，在面试前多次演练。\n'
+
+  const isBachelor = meta.identity === '本科生'
+  const isMaster = meta.identity === '研究生'
+
+  return [
+    '# 大学生模拟面试分析报告（通用模板）',
+    '',
+    '> 由于当前网络或服务异常，本报告基于通用模板自动生成，并已尽可能结合本次对话内容进行填充，供你进行自我复盘。',
+    '',
+    '---',
+    '',
+    '## 一、基本信息',
+    '',
+    `- 面试方向：${meta.direction || '专业相关岗位'}`,
+    `- 面试时长：${meta.durationMinutes ? meta.durationMinutes + ' 分钟' : '未统计（建议下次完整体验一次流程）'}`,
+    `- 面试者身份：${isBachelor ? '☑ 本科生' : '☐ 本科生'} / ${isMaster ? '☑ 研究生' : '☐ 研究生'}（如均未勾选，说明在对话中未明确提及）`,
+    `- 报告生成时间：${meta.generatedAt}`,
+    '',
+    '---',
+    '',
+    '## 二、回答质量概览（通用分析）',
+    '',
+    answersMd,
+    '',
+    '---',
+    '',
+    '## 三、通用参考作答模板（结构示例）',
+    '',
+    standardMd,
+    '',
+    '---',
+    '',
+    '## 四、综合评分与通用建议（示例）',
+    '',
+    '- 综合得分（示例）：**75 / 100**（该分数主要用于帮助你感受大致区间，实际水平请结合自身情况与多次面试体验综合判断）；',
+    '- 逻辑表达：建议在回答重要问题时，先给结论再展开分点说明，避免信息堆叠在一个长句中；',
+    '- 内容充实度：可以从课程作业、课程设计、科研/项目实践、学生工作等角度挖掘更多具体素材；',
+    '- 岗位匹配度：建议结合目标岗位 JD 总结 3–5 个关键能力点，并逐一准备对应的案例。',
+    '',
+    '**后续练习建议：**',
+    '',
+    '- 选取 3–5 个你最有代表性的项目/经历，按照 STAR 结构写成完整回答稿，多次朗读与演练；',
+    '- 针对目标方向（如前端/算法/研究生科研方向），整理至少 10 个高频面试题，并为每个问题准备 1 套主回答 + 1 套补充回答；',
+    '- 建议与同学或学长学姐安排 1–2 次线下或线上模拟面试，从第三方视角获得更加具体的反馈。'
+  ].join('\n')
+}
+
+// --- 生成面试分析报告 ---
+const generateInterviewReport = async () => {
+  if (interviewReportLoading.value) return
+  
+  if (!isInterviewEnded.value) {
+    ElMessage.warning('请先终止面试后再生成报告')
+    return
+  }
+  
+  if (chatHistory.value.length <= 1) {
+    ElMessage.warning('对话记录为空，无法生成报告')
+    return
+  }
+  
+  interviewReportLoading.value = true
+  ElMessage.closeAll()
+  ElMessage.info('正在生成个性化面试分析报告，请稍候...')
+  
+  try {
+    const targetRole = currentUser.value?.target_role || interviewGuide.targetRole || interviewGuide.templateRole || '未指定'
+    const meta = buildInterviewMeta(chatHistory.value)
+    const startedAt = Date.now()
+    
+    const res = await axios.post(
+      `${API_BASE}/api/generate-interview-report`,
+      {
+        chat_history: chatHistory.value,
+        target_role: targetRole,
+        meta
+      },
+      {
+        timeout: 10000 // 10 秒超时，超时进入降级模式
+      }
+    )
+
+    const elapsed = Date.now() - startedAt
+    console.debug('[InterviewReport] API 响应状态：', {
+      status: res.status,
+      elapsedMs: elapsed,
+      success: res.data?.success
+    })
+    console.debug('[InterviewReport] API 响应数据：', res.data)
+
+    if (res.data?.success && res.data.markdown) {
+      interviewReportMarkdown.value = res.data.markdown
+      ElMessage.closeAll()
+      ElMessage.success('报告生成成功！')
+      return
+    }
+
+    console.warn('[InterviewReport] DeepSeek 返回非成功状态：', res.data)
+
+    // 开启 “不降级” 开关时，直接提示错误，不切换到通用模板（方便开发/测试验证）
+    if (INTERVIEW_REPORT_NO_FALLBACK) {
+      ElMessage.error('报告生成失败（已关闭降级模式，请检查控制台日志）')
+      return
+    }
+
+    // 未成功返回，走降级模板
+    interviewReportMarkdown.value = buildFallbackInterviewReport(chatHistory.value)
+    ElMessage.closeAll()
+    ElMessage.warning('网络问题，无法生成个性化报告，已为您生成适配本次面试的通用模板报告')
+  } catch (e) {
+    const elapsed = Date.now() - (startedAt || Date.now())
+    const status = e?.response?.status
+    console.error('[InterviewReport] 调用 DeepSeek 失败：', {
+      status,
+      elapsedMs: elapsed,
+      error: e
+    })
+
+    if (INTERVIEW_REPORT_NO_FALLBACK) {
+      ElMessage.error('报告生成失败（已关闭降级模式，请检查控制台日志）')
+      return
+    }
+
+    // 任何异常都切换到通用模板，避免用户侧体验中断
+    interviewReportMarkdown.value = buildFallbackInterviewReport(chatHistory.value)
+    ElMessage.closeAll()
+    ElMessage.warning('网络问题，无法生成个性化报告，已为您生成适配本次面试的通用模板报告')
+  } finally {
+    interviewReportLoading.value = false
+  }
+}
+
+// --- 下载面试报告 ---
+const downloadInterviewReport = () => {
+  if (!interviewReportMarkdown.value) {
+    ElMessage.warning('请先生成报告')
+    return
+  }
+  
+  const blob = new Blob([interviewReportMarkdown.value], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
+  link.href = url
+  link.download = `面试分析报告_${timestamp}.md`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+  ElMessage.success('报告下载成功')
 }
 
 // ==========================================
@@ -1628,11 +2111,12 @@ const handleSelect = (key) => {
   if (key === '7') router.push('/virtual-experiment')
   // 模拟面试：进入页面时初始化引导环节状态
   if (key === '2') {
-    // 如果聊天历史只有初始消息，重置引导环节状态
+    // 如果聊天历史只有初始消息，重置引导环节状态并显示性别选择
     if (chatHistory.value && chatHistory.value.length === 1 && chatHistory.value[0].content === '你好，我是AI模拟面试官😊') {
       isGuidingPhase.value = true
       guideRoundCount.value = 0
       interviewGuide.guideIndex = 0
+      genderSelectionVisible.value = true
     }
   }
 }
@@ -1868,15 +2352,17 @@ onBeforeUnmount(() => {
             <div class="user-desc">{{ currentUser?.grade || '年级' }} / {{ currentUser?.target_role || '岗位' }}</div>
           </div>
         </div>
-        <!-- 退出登录按钮 -->
+        <!-- 退出登录按钮（用户端） -->
         <el-button
-          type="text"
+          type="link"
           size="small"
           @click="handleLogout"
           class="logout-button"
           style="color: rgba(255,255,255,0.7); margin-top: 8px; width: 100%;"
         >
-          <el-icon style="margin-right: 4px"><User /></el-icon>
+          <el-icon style="margin-right: 4px; color: rgba(255,255,255,0.7)">
+            <ArrowRight />
+          </el-icon>
           退出登录
         </el-button>
       </div>
@@ -2120,9 +2606,32 @@ onBeforeUnmount(() => {
               <p>用户右侧气泡，AI 左侧气泡（含头像），支持 Enter 快速发送</p>
             </div>
 
+            <!-- 面试官性别选择（引导环节开始时显示） -->
+            <div v-if="genderSelectionVisible && isGuidingPhase && chatHistory.length <= 1" class="gender-selection-area">
+              <div class="gender-selection-title">请选择面试官性别</div>
+              <div class="gender-selection-buttons">
+                <el-button 
+                  :type="interviewerGender === 'female' ? 'primary' : 'default'"
+                  :plain="interviewerGender !== 'female'"
+                  @click="selectInterviewerGender('female')"
+                  class="gender-button"
+                >
+                  👩 女性面试官
+                </el-button>
+                <el-button 
+                  :type="interviewerGender === 'male' ? 'primary' : 'default'"
+                  :plain="interviewerGender !== 'male'"
+                  @click="selectInterviewerGender('male')"
+                  class="gender-button"
+                >
+                  👨 男性面试官
+                </el-button>
+              </div>
+            </div>
+
             <!-- 数字人展示区 -->
             <div class="digital-human-section">
-              <DigitalHuman :isTalking="interviewerState === 'talking'" />
+              <DigitalHuman :isTalking="interviewerState === 'talking'" :gender="interviewerGender" />
             </div>
 
             <div class="chat-shell">
@@ -2194,7 +2703,7 @@ onBeforeUnmount(() => {
   
               <div class="input-area">
                 <!-- 新增：提前结束引导，开始正式面试按钮（仅引导环节显示） -->
-                <div v-if="isGuidingPhase" style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <div v-if="isGuidingPhase && !isInterviewEnded" style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
                   <el-button 
                     type="primary" 
                     plain
@@ -2202,6 +2711,18 @@ onBeforeUnmount(() => {
                     class="skip-guide-button"
                   >
                     ⚡ 提前结束引导，开始正式面试
+                  </el-button>
+                </div>
+                
+                <!-- 新增：面试终止按钮（面试进行中显示） -->
+                <div v-if="!isGuidingPhase && !isInterviewEnded" style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                  <el-button 
+                    type="danger" 
+                    plain
+                    @click="endInterview"
+                    class="end-interview-button"
+                  >
+                    ⛔ 终止面试
                   </el-button>
                 </div>
                 
@@ -2224,17 +2745,28 @@ onBeforeUnmount(() => {
                     @keyup.enter="sendMessage"
                     size="large"
                     class="full-width-input"
+                    :disabled="isInterviewEnded"
                   >
                     <template #prepend>
-                      <el-button 
-                        @click="toggleVoiceInput"
-                        :class="{ 'recording-active': isRecording }"
-                        :title="isRecording ? '点击停止' : '点击说话'"
-                      >
-                        <el-icon :class="{ 'mic-pulse': isRecording }" :size="20">
-                          <Microphone />
-                        </el-icon>
-                      </el-button>
+                      <div class="voice-control">
+                        <el-button 
+                          @click="toggleVoiceInput"
+                          :class="{ 'recording-active': isRecording }"
+                          :title="isRecording ? '点击停止' : '点击说话'"
+                        >
+                          <el-icon :class="{ 'mic-pulse': isRecording }" :size="20">
+                            <Microphone />
+                          </el-icon>
+                        </el-button>
+                        <div class="voice-status">
+                          <span class="voice-lang-toggle" @click="voiceLang = voiceLang === 'zh-CN' ? 'en-US' : 'zh-CN'">
+                            {{ voiceLang === 'zh-CN' ? '中文' : 'EN' }}
+                          </span>
+                          <span v-if="isRecording" class="voice-timer">
+                            · {{ voiceSeconds }}s
+                          </span>
+                        </div>
+                      </div>
                     </template>
                     
                     <template #append>
@@ -2251,9 +2783,45 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div class="agent-action">
-                  <el-button type="success" :loading="agentCalling" @click="callAgent" class="agent-button">
+                  <el-button 
+                    v-if="!isInterviewEnded"
+                    type="success" 
+                    :loading="agentCalling" 
+                    @click="callAgent" 
+                    class="agent-button"
+                  >
                     ⚡ 召唤 Agent 智能推荐
                   </el-button>
+                  
+                  <!-- 新增：面试报告生成按钮（面试终止后显示） -->
+                  <div v-if="isInterviewEnded" style="display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 400px;">
+                    <el-button 
+                      type="primary" 
+                      :loading="interviewReportLoading" 
+                      @click="generateInterviewReport" 
+                      class="report-button"
+                    >
+                      📊 生成面试分析报告
+                    </el-button>
+                    
+                    <!-- 报告下载按钮（报告生成后显示） -->
+                    <el-button 
+                      v-if="interviewReportMarkdown"
+                      type="success" 
+                      @click="downloadInterviewReport" 
+                      class="download-button"
+                    >
+                      💾 下载报告
+                    </el-button>
+                  </div>
+                </div>
+                
+                <!-- 新增：面试报告显示区域 -->
+                <div v-if="interviewReportMarkdown" class="report-display-area">
+                  <div class="report-header">
+                    <h3>📄 面试分析报告</h3>
+                  </div>
+                  <div class="report-content" v-html="md.render(interviewReportMarkdown)"></div>
                 </div>
               </div>
             </div>
@@ -2540,7 +3108,8 @@ onBeforeUnmount(() => {
     border: 1px solid rgba(15,23,42,0.06);
     border-radius: 16px;
     box-shadow: 0 18px 50px rgba(15,23,42,0.08);
-    overflow: hidden;
+    overflow-y: auto;   /* 允许整体区域滚动，报告较长时不被裁剪 */
+    overflow-x: hidden;
   }
   .chat-window-el {
     flex: 1;
@@ -2554,6 +3123,40 @@ onBeforeUnmount(() => {
     padding: 14px; 
     background: rgba(255,255,255,0.92); 
     border-top: 1px solid rgba(15,23,42,0.06); 
+  }
+  /* 性别选择区域样式 */
+  .gender-selection-area {
+    margin-bottom: 20px;
+    padding: 20px;
+    background: rgba(255,255,255,0.95);
+    border-radius: 12px;
+    border: 1px solid rgba(15,23,42,0.08);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+    text-align: center;
+  }
+  .gender-selection-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #0f172a;
+    margin-bottom: 16px;
+  }
+  .gender-selection-buttons {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    align-items: center;
+  }
+  .gender-button {
+    min-width: 160px;
+    height: 44px;
+    font-weight: 600;
+    font-size: 14px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+  }
+  .gender-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(64,158,255,0.3);
   }
   .input-row {
     margin-bottom: 10px;
@@ -2591,6 +3194,163 @@ onBeforeUnmount(() => {
   .agent-button:hover {
     background: linear-gradient(135deg, #85CE61, #67C23A);
     filter: brightness(1.1);
+  }
+  .voice-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .voice-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: rgba(15,23,42,0.65);
+  }
+  .voice-lang-toggle {
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: rgba(64,158,255,0.08);
+    border: 1px solid rgba(64,158,255,0.28);
+    color: rgba(37,99,235,0.9);
+    font-weight: 500;
+    transition: all 0.2s ease;
+  }
+  .voice-lang-toggle:hover {
+    background: rgba(64,158,255,0.16);
+    box-shadow: 0 0 0 1px rgba(64,158,255,0.12);
+  }
+  .voice-timer {
+    color: rgba(15,23,42,0.55);
+  }
+
+  /* 侧边栏退出按钮样式：背景透明，与深蓝侧边栏融为一体 */
+  .logout-button {
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .logout-button :deep(.el-button__inner) {
+    background-color: transparent;
+  }
+  .logout-button:hover {
+    background-color: transparent !important;
+    color: #ffffff !important;
+  }
+  /* 面试终止按钮样式 */
+  .end-interview-button {
+    background: linear-gradient(135deg, rgba(245,108,108,0.95), rgba(245,108,108,0.75));
+    color: #fff;
+    border: 1px solid rgba(245,108,108,0.40);
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 10px 20px;
+    transition: all 0.3s ease;
+  }
+  .end-interview-button:hover {
+    background: linear-gradient(135deg, rgba(245,108,108,1), rgba(245,108,108,0.85));
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(245,108,108,0.3);
+  }
+  /* 报告生成按钮样式 */
+  .report-button {
+    width: 100%;
+    max-width: 400px;
+    height: 40px;
+    font-weight: 600;
+    font-size: 14px;
+    background: linear-gradient(135deg, rgba(64,158,255,0.95), rgba(64,158,255,0.75));
+    border: 1px solid rgba(64,158,255,0.40);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+  }
+  .report-button:hover {
+    background: linear-gradient(135deg, rgba(64,158,255,1), rgba(64,158,255,0.85));
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(64,158,255,0.3);
+  }
+  /* 下载按钮样式 */
+  .download-button {
+    width: 100%;
+    max-width: 400px;
+    height: 40px;
+    font-weight: 600;
+    font-size: 14px;
+    background: linear-gradient(135deg, #67C23A, #85CE61);
+    border: 1px solid #85CE61;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+  }
+  .download-button:hover {
+    background: linear-gradient(135deg, #85CE61, #67C23A);
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(103,194,58,0.3);
+  }
+  /* 报告显示区域样式 */
+  .report-display-area {
+    margin-top: 20px;
+    padding: 20px;
+    background: rgba(255,255,255,0.95);
+    border-radius: 12px;
+    border: 1px solid rgba(15,23,42,0.08);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  }
+  .report-header {
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid rgba(64,158,255,0.2);
+  }
+  .report-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .report-content {
+    line-height: 1.8;
+    color: #0f172a;
+  }
+  .report-content :deep(h1),
+  .report-content :deep(h2),
+  .report-content :deep(h3) {
+    margin-top: 24px;
+    margin-bottom: 12px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .report-content :deep(h1) { font-size: 24px; }
+  .report-content :deep(h2) { font-size: 20px; }
+  .report-content :deep(h3) { font-size: 18px; }
+  .report-content :deep(p) {
+    margin-bottom: 12px;
+    color: rgba(15,23,42,0.85);
+  }
+  .report-content :deep(ul),
+  .report-content :deep(ol) {
+    margin-bottom: 12px;
+    padding-left: 24px;
+  }
+  .report-content :deep(li) {
+    margin-bottom: 8px;
+    color: rgba(15,23,42,0.85);
+  }
+  .report-content :deep(strong) {
+    color: #0f172a;
+    font-weight: 700;
+  }
+  .report-content :deep(code) {
+    background: rgba(15,23,42,0.06);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
   }
   .msg-row { display: flex; gap: 10px; margin: 14px 0; align-items: flex-end; }
   .msg-row.user { justify-content: flex-end; }

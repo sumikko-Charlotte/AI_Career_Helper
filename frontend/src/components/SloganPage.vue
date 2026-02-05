@@ -7,7 +7,7 @@
            使用 @/ 别名引用 src/assets 目录中的图片资源
            ========================================== -->
       <div class="logo-container">
-        <img src="@/assets/images/zh-logo.jpg" alt="职航 CAREER FLY" class="logo-image" />
+        <img src="@/assets/images/logo.jpg" alt="职航 CAREER FLY" class="logo-image" />
       </div>
       <div class="menu">
         <div class="menu-item" @click="goToAboutUs">关于我们</div>
