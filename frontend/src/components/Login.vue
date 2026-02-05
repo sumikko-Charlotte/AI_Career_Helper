@@ -87,14 +87,17 @@ const handleLogin = async () => {
   loading.value = true
   try {
     console.log('🚀 Sending login request')
+    // 确保请求地址格式正确：如果 API_BASE 为空，使用相对路径；否则使用完整路径
+    const loginUrl = API_BASE ? `${API_BASE}/api/login` : '/api/login'
     const response = await axios.post(
-      `${API_BASE}/api/login`,
+      loginUrl,
       {
         username: loginForm.value.username,
         password: loginForm.value.password
       },
       {
         headers: {
+          'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true'
         }
       }
@@ -159,11 +162,14 @@ const handleRegister = async () => {
 
   loading.value = true
   try {
+    // 确保请求地址格式正确：如果 API_BASE 为空，使用相对路径；否则使用完整路径
+    const registerUrl = API_BASE ? `${API_BASE}/api/register` : '/api/register'
     const response = await axios.post(
-      `${API_BASE}/api/register`,
+      registerUrl,
       registerForm.value,
       {
         headers: {
+          'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true'
         }
       }
