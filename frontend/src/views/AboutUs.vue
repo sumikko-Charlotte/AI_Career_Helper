@@ -2,7 +2,7 @@
   <el-container style="min-height: 100vh; padding: 30px 20px; max-width: 1200px; margin: 0 auto; background: #f5f7fa;">
     <el-main>
       <!-- 返回按钮 -->
-      <el-button type="text" @click="$router.go(-1)" style="margin-bottom: 20px; color: #165DFF;">
+      <el-button type="link" @click="$router.go(-1)" style="margin-bottom: 20px; color: #165DFF;">
         ← 回到上一页
       </el-button>
       <!-- 关于我们核心内容 -->

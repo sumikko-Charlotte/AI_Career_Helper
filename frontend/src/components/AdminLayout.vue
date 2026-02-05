@@ -91,10 +91,6 @@ onUnmounted(() => {
       <el-container>
         <el-header class="admin-header">
   <div class="header-left">
-    <div class="header-links">
-      <router-link to="/about-us" class="header-link">关于我们</router-link>
-      <router-link to="/privacy-policy" class="header-link">隐私政策</router-link>
-    </div>
     <span class="welcome-text">欢迎回来，管理员</span>
   </div>
   <div class="header-right">

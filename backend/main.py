@@ -146,6 +146,11 @@ class GenerateCareerRequest(BaseModel):
 class VirtualCareerQuestionsRequest(BaseModel):
     career: str
 
+class GenerateInterviewReportRequest(BaseModel):
+    chat_history: list  # 完整的对话历史记录
+    target_role: str = ""  # 目标岗位
+    meta: dict | None = None  # 前端已提取的元信息：身份/方向/时长/生成时间
+
 # ==========================================
 #  Mock 数据库 (职位数据)
 # ==========================================
@@ -1181,6 +1186,91 @@ def generate_career(req: GenerateCareerRequest):
 
     markdown = _deepseek_markdown(system_prompt, user_prompt)
     return {"success": True, "markdown": markdown}
+
+
+@app.post("/api/generate-interview-report")
+def generate_interview_report(req: GenerateInterviewReportRequest):
+    """
+    生成面试分析报告
+    接收：完整的对话历史记录和目标岗位
+    输出：Markdown 格式的面试分析报告
+    """
+    system_prompt = (
+        "你是一位长期为大学生（本科生 + 研究生）做模拟面试辅导的资深面试官兼职业发展顾问。\n"
+        "你会基于【系统已提取的元信息】和【完整对话记录】生成一份**高度贴合本次面试表现的个性化分析报告**，而不是模板化的空洞总结。\n\n"
+        "【总体要求】\n"
+        "- 报告对象限定为大学生：需要区分本科生 / 研究生的典型特点和面试关注点；\n"
+        "- 所有评价、建议必须紧密结合本次对话中的**具体回答内容**，避免使用任何“通用模板化”的空话；\n"
+        "- 采用 Markdown 输出，结构清晰、层级明确、便于直接作为报告下载保存；\n"
+        "- 语言要专业、客观、友好，适合大学生阅读，避免居高临下或过度严厉的语气。\n\n"
+        "【报告结构（必须包含以下 7 个模块）】\n\n"
+        "1）报告基本信息\n"
+        "- 使用系统提供的元信息（身份、方向、时长、生成时间等），整理成一个简要信息区块；\n"
+        "- 不要自行编造与元信息相矛盾的内容，可以在元信息缺失时给出“未明确”或“未在对话中提及”的描述。\n\n"
+        "2）面试整体评价\n"
+        "- 结合对话中用户的整体表现，给出一段 2–3 段落的综合评价；\n"
+        "- 需要同时覆盖：专业基础、表达与沟通、结构化思维、临场应变、与岗位/方向的匹配度等；\n"
+        "- 评价中要引用少量对话中的**具体回答片段或现象**作为依据，而不是只给抽象形容词。\n\n"
+        "3）综合评分（百分制 + 维度评分）\n"
+        "- 给出一个总分（0–100 分），并给出 3–5 个评分维度（如“专业基础”“项目/实践”“表达与沟通”“逻辑与结构”“岗位匹配度”）；\n"
+        "- 每个维度给出分数，并用 1–2 句话解释打分理由，理由要引用对话中的真实表现（例如“在 XX 问题中能回答出关键概念，但在 XX 追问时显得不够系统”）。\n\n"
+        "4）答题亮点总结\n"
+        "- 提炼 1–3 个**真实存在于本次对话中的亮点**，例如：\n"
+        "  - 在某个专业问题上的回答体现出扎实的课程基础；\n"
+        "  - 在介绍项目/实践经历时条理清晰、能够量化结果；\n"
+        "  - 在自我介绍或职业动机上有明确的自我认知；\n"
+        "- 每个亮点需要简要指出“体现在哪类问题中”“为什么是亮点”。\n\n"
+        "5）主要提升方向\n"
+        "- 针对本次面试中暴露出的具体问题给出 2–4 条改进建议；\n"
+        "- 每条建议都要对应到某一类问题或具体表现，例如“技术细节题回答模糊”“表达缺少结构”“对目标岗位缺少了解”等；\n"
+        "- 建议要可落地，如“建议针对 XX 主题整理 3–5 个高频题并写出演练稿”“建议使用 STAR 结构重写某个项目经历”。\n\n"
+        "6）逐题分析（核心模块）\n"
+        "- 针对本次面试中出现的每一个关键问题（可以按 3–8 个代表性问题汇总），输出一个子模块：\n"
+        "  - 问题：简要概括该轮提问的核心问题；\n"
+        "  - 用户回答评价：结合用户原始回答，指出优点和需要改进的地方（引用回答中的关键信息）；\n"
+        "  - 标准参考答案：给出贴合大学生/目标岗位的专业参考回答，可以用结构化的小标题或分点形式；\n"
+        "- 参考答案要保证：逻辑清晰、信息充分、技术或专业内容大体正确、用语简洁易懂。\n\n"
+        "7）总结与后续建议\n"
+        "- 结合用户当前身份（本科生/研究生，如元信息中未给出则用“在校大学生”表述），给出面试准备与职业发展的建议；\n"
+        "- 建议可以覆盖：短期（1–3 个月）的面试准备、简历与项目打磨、课程/科研侧重方向等；\n"
+        "- 保持鼓励性与建设性，避免只指出问题不提供可行路径。\n\n"
+        "【重要限制】\n"
+        "- 不要简单照搬“通用模板”的话术，要根据本次对话的具体内容做针对性的描述；\n"
+        "- 不要虚构用户并未在对话中体现的经历（如不存在的实习/项目/科研），可以对已有经历做合理的总结与提炼；\n"
+        "- 报告中可以适度进行信息归纳和推断，但不要杜撰事实。\n"
+    )
+    
+    # 构建对话历史文本
+    chat_text = ""
+    for msg in req.chat_history:
+        role = "面试官" if msg.get("role") == "ai" else "求职者"
+        content = msg.get("content", "")
+        chat_text += f"{role}：{content}\n\n"
+
+    meta = req.meta or {}
+    direction = meta.get("direction") or "未在对话中明确"
+    identity = meta.get("identity") or "未在对话中明确"
+    duration = meta.get("durationMinutes")
+    duration_text = f"{duration} 分钟" if isinstance(duration, (int, float)) and duration > 0 else "未统计"
+    generated_at = meta.get("generatedAt") or "系统时间未提供"
+
+    user_prompt = (
+        "【元信息（已由系统预提取）】\n"
+        f"- 面试方向：{direction}\n"
+        f"- 面试者身份：{identity}\n"
+        f"- 面试时长：{duration_text}\n"
+        f"- 报告生成时间：{generated_at}\n"
+        f"- 目标岗位（如有）：{req.target_role or '未指定'}\n\n"
+        "【完整对话记录】（按照时间顺序，从开场到结束）：\n\n"
+        f"{chat_text}\n"
+        "请严格依据以上元信息和对话内容，按照系统提示的 7 个模块结构生成一份面向大学生的个性化面试分析报告。"
+    )
+    
+    try:
+        markdown = _deepseek_markdown(system_prompt, user_prompt)
+        return {"success": True, "markdown": markdown}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 # ==========================================
 #  启动入口

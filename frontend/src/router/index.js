@@ -65,10 +65,11 @@ const routes = [
     name: 'PrivacyPolicy',
     component: PrivacyPolicy
   },
-  // 管理员路由
+  // 管理员路由：默认进入「功能引导」而不是「数据大屏」
   {
     path: '/admin',
     component: AdminLayout,
+    redirect: '/admin/guide', // 访问 /admin 时自动跳转到功能引导
     beforeEnter: (to, from, next) => {
       next()
     },
