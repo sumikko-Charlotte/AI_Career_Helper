@@ -1,0 +1,128 @@
+========================================
+数据库配置扫描结果
+========================================
+
+[核心数据库配置]
+========================================
+文件路径: ai-career-helper-backend\db_config.py
+行号: 14-22
+
+配置详情:
+  host: "bj-cynosdbmysql-grp-ovt0aqds.sql.tencentcdb.com"
+  port: 20603
+  user: "root"
+  password: "AIcareer@helper123" [⚠️敏感信息，需保护]
+  database: "ai_career_helper"
+  charset: "utf8mb4"
+  cursorclass: pymysql.cursors.DictCursor
+
+========================================
+
+[CSV文件相关]
+========================================
+
+1. backend\main.py (多处CSV操作):
+   行316: file_path = "data/history.csv" - 历史记录
+   行698: file_path = "data/applications.csv" - 职位投递记录
+   行725: file_path = "data/profiles.csv" - 用户资料
+   行897: uploaded_file = 'data/uploaded_resumes.csv' - 上传的简历
+   行898: users_file = 'data/users.csv' - 用户数据(已迁移到数据库)
+
+2. server\app.js (独立用户服务):
+   行26: CSV_PATH = path.join(__dirname, 'public', 'users.csv')
+   行27: CSV_FIELDS = ['username','password','grade','target_role','createTaskNum','uploadedResumeNum','status','register_time','last_login']
+
+3. backend\init_db.py (数据库初始化):
+   行11: csv_path = "data/users.csv" - 初始化CSV文件
+
+4. 前端代码中的CSV引用:
+   - ai-career-helper-frontend\src\components\Login.vue
+     行112: 注释 "同步到真实用户服务（用于持久化 CSV）"
+     行116: 注释 "如果该用户在真实 CSV 中不存在，则尝试注册一次以保证持久化"
+     行162: 注释 "同步到真实用户服务，持久化到 CSV"
+   
+   - ai-career-helper-frontend\src\components\ResumeDoctor.vue
+     行133: 注释 "真实用户上报：通知用户统计（CSV 中的 createTaskNum +1）"
+   
+   - ai-career-helper-frontend\src\components\HistoryRecord.vue
+     行53: 提示信息 "上传后会在 Admin 端展示，并在 CSV 中计入统计"
+   
+   - ai-career-helper-frontend\src\views\admin\ResumeTasks.vue
+     行88: 注释 "显示上传的报告（后端/CSV 里的内容优先）"
+   
+   - ai-career-helper-frontend\src\views\admin\UserManage.vue
+     行49: 注释 "请求真实用户列表（CSV 持久化）"
+
+========================================
+
+[腾讯云相关]
+========================================
+
+1. ai-career-helper-backend\db_config.py:
+   行3: 文件注释 "腾讯云 TDSQL-C 数据库配置文件"
+   行15: 数据库地址 "bj-cynosdbmysql-grp-ovt0aqds.sql.tencentcdb.com" (腾讯云TDSQL-C)
+
+2. backend\README_DB.md:
+   行5: "项目已从本地 CSV 文件迁移到腾讯云 TDSQL-C 云端数据库"
+   行88: "确保服务器能够访问腾讯云数据库（检查安全组设置）"
+
+3. 项目拆分完成报告.md:
+   行262: "使用云数据库（如腾讯云 TDSQL-C、阿里云 RDS）"
+
+4. replit.md:
+   行12: "Uses external MySQL database on Tencent Cloud"
+   行24: "Database: MySQL (Tencent Cloud TDSQL-C)"
+
+5. backend\使用说明.txt:
+   行23: "确保网络能访问腾讯云数据库"
+
+========================================
+
+[完整配置信息汇总]
+========================================
+数据库类型: MySQL (腾讯云 TDSQL-C)
+数据库地址: bj-cynosdbmysql-grp-ovt0aqds.sql.tencentcdb.com
+端口: 20603
+用户名: root
+密码: AIcareer@helper123 [⚠️敏感信息]
+数据库名: ai_career_helper
+字符集: utf8mb4
+连接驱动: pymysql
+========================================
+
+[CSV数据文件完整列表]
+========================================
+1. backend\data\history.csv
+   用途: 历史记录
+   操作: 读取、写入
+
+2. backend\data\applications.csv
+   用途: 职位投递记录
+   操作: 写入
+
+3. backend\data\profiles.csv
+   用途: 用户资料
+   操作: 读取、写入
+
+4. backend\data\uploaded_resumes.csv
+   用途: 上传的简历报告
+   操作: 读取、写入、删除
+
+5. backend\data\users.csv
+   用途: 用户数据（已迁移到数据库，保留作为备份）
+   操作: 初始化时创建
+
+6. server\public\users.csv
+   用途: 独立用户服务的持久化数据
+   操作: 读取、写入（通过 server/app.js）
+========================================
+
+[安全建议]
+========================================
+⚠️ 重要: 数据库密码已暴露在代码中
+建议:
+1. 将密码移至环境变量
+2. 使用 .env 文件管理敏感信息
+3. 确保 .env 文件已添加到 .gitignore
+4. 部署时使用平台的环境变量功能
+========================================
