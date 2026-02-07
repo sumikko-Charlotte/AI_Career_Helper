@@ -1,7 +1,7 @@
 import axios from 'axios'
 
-// 全局 API 基础地址
-const API_BASE = 'https://1401892234-6e2667orei.ap-beijing.tencentcs.com'
+// 优先读取 Vercel 环境变量，没有则用本地默认值
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
 // 创建 axios 实例，统一配置请求
 const request = axios.create({
