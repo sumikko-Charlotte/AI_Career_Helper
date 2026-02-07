@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd frontend && npm install && npm run build",
-  "outputDirectory": "frontend/dist",
+  "buildCommand": "cd ai-career-helper-frontend && npm install && npm run build",
+  "outputDirectory": "ai-career-helper-frontend/dist",
   "framework": null
 }
