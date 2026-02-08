@@ -54,17 +54,46 @@ def get_db_config():
     
     Returns:
         dict: 数据库配置字典
+    
+    Raises:
+        ValueError: 如果配置值无效（None 或空字符串）
     """
     # 验证必需的环境变量
     validate_db_config()
     
+    # 读取并验证所有配置值
+    host = os.getenv("DB_HOST")
+    port_str = os.getenv("DB_PORT", "3306")
+    user = os.getenv("DB_USER")
+    password = os.getenv("DB_PASSWORD")
+    database = os.getenv("DB_NAME")
+    charset = os.getenv("DB_CHARSET", "utf8mb4")
+    
+    # 确保所有必需值不为 None 或空字符串
+    if not host or not host.strip():
+        raise ValueError("DB_HOST 环境变量为空或未设置")
+    if not user or not user.strip():
+        raise ValueError("DB_USER 环境变量为空或未设置")
+    if not password:
+        raise ValueError("DB_PASSWORD 环境变量为空或未设置")
+    if not database or not database.strip():
+        raise ValueError("DB_NAME 环境变量为空或未设置")
+    if not charset or not charset.strip():
+        charset = "utf8mb4"  # 使用默认值
+    
+    # 转换端口为整数
+    try:
+        port = int(port_str)
+    except (ValueError, TypeError):
+        raise ValueError(f"DB_PORT 环境变量无效：{port_str}，必须是整数")
+    
     config = {
-        "host": os.getenv("DB_HOST"),
-        "port": int(os.getenv("DB_PORT", "3306")),
-        "user": os.getenv("DB_USER"),
-        "password": os.getenv("DB_PASSWORD"),
-        "database": os.getenv("DB_NAME"),
-        "charset": os.getenv("DB_CHARSET", "utf8mb4"),
+        "host": host.strip(),
+        "port": port,
+        "user": user.strip(),
+        "password": password,  # 密码可能包含空格，不 strip
+        "database": database.strip(),
+        "charset": charset.strip(),
         "cursorclass": pymysql.cursors.DictCursor,
         # 连接超时参数（避免 Render 卡住）
         "connect_timeout": 10,
@@ -110,11 +139,39 @@ def get_db_cursor():
     while retry_count < max_retries:
         try:
             config = get_db_config()
+            
+            # 验证配置字典中没有 None 值
+            for key, value in config.items():
+                if key != "ssl" and value is None:
+                    raise ValueError(f"数据库配置错误：{key} 为 None")
+            
+            # 建立连接
             conn = pymysql.connect(**config)
+            
+            # 验证连接对象是否有效
+            if conn is None:
+                raise OperationalError("pymysql.connect() 返回 None，连接失败")
+            
+            # 验证连接是否真的可用（通过访问 encoding 属性）
+            try:
+                _ = conn.encoding  # 测试连接对象是否有效
+            except AttributeError as e:
+                raise OperationalError(f"数据库连接对象无效：{e}")
+            
+            # 创建游标
             cursor = conn.cursor()
+            
+            if cursor is None:
+                conn.close()
+                raise OperationalError("conn.cursor() 返回 None，游标创建失败")
+            
             db_name = config.get("database", "unknown")
             print(f"✅ 成功连接到云端数据库 {db_name}！")
             return conn, cursor
+        except ValueError as e:
+            # 环境变量配置错误
+            print(f"❌ 数据库配置错误：{e}")
+            raise
         except OperationalError as e:
             error_msg = str(e)
             error_code = e.args[0] if e.args else None
@@ -168,12 +225,20 @@ def get_db_cursor():
             
             raise OperationalError(f"{reason} (错误代码: {error_code})")
         except ValueError as e:
-            # 环境变量配置不完整
+            # 环境变量配置不完整或无效
+            print(f"❌ 数据库配置错误：{e}")
             raise
+        except AttributeError as e:
+            # 连接对象属性访问错误（如 encoding）
+            error_msg = str(e)
+            print(f"❌ 数据库连接对象无效 [AttributeError]：{error_msg}")
+            print(f"   可能原因：连接对象为 None 或连接已失效")
+            raise OperationalError(f"数据库连接对象无效：{error_msg}")
         except Exception as e:
             error_type = type(e).__name__
-            print(f"❌ 数据库连接失败 [{error_type}]：{e}")
-            raise
+            error_msg = str(e)
+            print(f"❌ 数据库连接失败 [{error_type}]：{error_msg}")
+            raise OperationalError(f"数据库连接失败 [{error_type}]：{error_msg}")
     
     # 如果所有重试都失败
     raise OperationalError("数据库连接失败：重试次数已达上限")
