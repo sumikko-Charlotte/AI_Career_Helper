@@ -17,7 +17,7 @@ from openai import OpenAI
 # ==========================================
 # 导入数据库配置和操作函数
 # ==========================================
-from db_config import (
+from .db_config import (
     get_db_connection, 
     get_all_users, 
     get_user_by_username, 
@@ -338,8 +338,8 @@ def get_history(username: str):
     return {"success": True, "data": records}
 # 根路径处理（避免重复声明 / 路由）
 @app.get("/")
-async def root():
-    return {"message": "AI 后端服务运行中"}
+def root():
+    return {"ok": True, "service": "ai-career-helper-backend"}
 
 @app.get("/health")
 def health():
