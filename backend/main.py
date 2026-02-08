@@ -37,15 +37,19 @@ frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"
 if os.path.exists(frontend_dist):
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="frontend_assets")
 # --- 1. 跨域配置 (必不可少) ---
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "")
+ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+if FRONTEND_ORIGIN:
+    ORIGINS.append(FRONTEND_ORIGIN)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://ai-career-helper-lac.vercel.app",
-        "https://ai-career-helper-2tonbo8a1-ai-career-helper-d699b731.vercel.app",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
-    allow_credentials=True,
+    allow_origins=ORIGINS,
+    allow_origin_regex=r"^https://.*\.vercel\.app$",
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -336,6 +340,11 @@ def get_history(username: str):
 @app.get("/")
 async def root():
     return {"message": "AI 后端服务运行中"}
+
+@app.get("/health")
+def health():
+    """健康检查接口"""
+    return {"ok": True}
 
 @app.post("/api/login")
 def login(request: LoginRequest):
