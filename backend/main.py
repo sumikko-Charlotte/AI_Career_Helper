@@ -1349,13 +1349,15 @@ if __name__ == "__main__":
     
     # 测试1: 数据库连接
     print("\n1️⃣ 测试数据库连接...")
-    conn = get_db_connection()
-    if conn:
+    try:
+        from .db_config import get_db_cursor
+        conn, cursor = get_db_cursor()
+        cursor.close()
         conn.close()
         print("✅ 数据库连接成功！")
-    else:
-        print("❌ 数据库连接失败，请检查 db_config.py 中的配置")
-        print("   提示：请确保已修改 password 参数为腾讯云重置的 root 密码")
+    except Exception as e:
+        print(f"❌ 数据库连接失败：{e}")
+        print("   提示：请检查 Render 环境变量配置（DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME）")
     
     # 测试2: 获取所有用户
     print("\n2️⃣ 测试获取所有用户数据...")
