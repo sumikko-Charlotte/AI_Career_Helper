@@ -367,7 +367,7 @@ const toggleVoiceInput = () => {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // 简历医生 URL：部署时通过 Vercel 环境变量 VITE_RESUME_DOCTOR_URL 设置
-const RESUME_DOCTOR_URL = import.meta.env.VITE_RESUME_DOCTOR_URL || '{{STREAMLIT_RESUME_DOCTOR_URL}}'
+const RESUME_DOCTOR_URL = import.meta.env.VITE_RESUME_DOCTOR_URL || 'https://ai-career-apper-resume-doctor-69etycfa4ohbkxndweoawk.streamlit.app'
 const goToResumeDoctor = () => window.open(RESUME_DOCTOR_URL, '_blank')
 
 const scrollChatToBottom = () => {

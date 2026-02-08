@@ -15,7 +15,7 @@ const md = new MarkdownIt() // 初始化渲染器
 const currentMode = ref('basic')
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 // 简历医生 URL：部署时通过 Vercel 环境变量 VITE_RESUME_DOCTOR_URL 设置
-const resumeDoctorUrl = import.meta.env.VITE_RESUME_DOCTOR_URL || '{{STREAMLIT_RESUME_DOCTOR_URL}}'
+const resumeDoctorUrl = import.meta.env.VITE_RESUME_DOCTOR_URL || 'https://ai-career-apper-resume-doctor-69etycfa4ohbkxndweoawk.streamlit.app'
 console.debug('[ResumeDoctor] API_BASE ->', API_BASE)
 console.debug('[ResumeDoctor] resumeDoctorUrl ->', resumeDoctorUrl)
 const fileList = ref([])                 // ✅ 保留你的结构
