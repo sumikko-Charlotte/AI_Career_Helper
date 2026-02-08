@@ -11,7 +11,7 @@ import json
 from typing import List
 import shutil # 👈 新增
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from openai import OpenAI
 
 # ==========================================
@@ -345,6 +345,13 @@ def root():
 def health():
     """健康检查接口"""
     return {"ok": True}
+
+@app.get("/resume-doctor")
+async def redirect_resume_doctor():
+    """简历医生服务代理接口"""
+    # 跳转到在线简历医生服务（Streamlit）
+    resume_doctor_url = "https://ai-career-apper-resume-doctor-69etycfa4ohbkxndweoawk.streamlit.app"
+    return RedirectResponse(url=resume_doctor_url)
 
 @app.post("/api/login")
 def login(request: LoginRequest):
@@ -1355,21 +1362,6 @@ if __name__ == "__main__":
     print("   API 文档: http://127.0.0.1:8001/docs\n")
     
     uvicorn.run(app, host="127.0.0.1", port=8001)
-
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
-import uvicorn
-
-app = FastAPI()
-
-# 原有登录等接口保留不变
-# ... 你的原有代码 ...
-
-# 新增简历医生代理接口
-@app.get("/resume-doctor")
-async def redirect_resume_doctor():
-    # 跳转到本地简历医生服务
-    return RedirectResponse(url="http://127.0.0.1:8502")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
