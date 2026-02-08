@@ -344,7 +344,22 @@ def root():
 @app.get("/health")
 def health():
     """健康检查接口"""
-    return {"ok": True}
+    result = {"ok": True}
+    
+    # 可选的数据库连接检查
+    try:
+        from .db_config import get_db_connection
+        conn = get_db_connection()
+        if conn:
+            conn.close()
+            result["db_ok"] = True
+        else:
+            result["db_ok"] = False
+    except Exception as e:
+        result["db_ok"] = False
+        result["db_error"] = str(e)
+    
+    return result
 
 # 简历医生服务地址配置
 RESUME_DOCTOR_URL = os.getenv(
