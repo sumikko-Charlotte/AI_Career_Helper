@@ -346,12 +346,16 @@ def health():
     """健康检查接口"""
     return {"ok": True}
 
+# 简历医生服务地址配置
+RESUME_DOCTOR_URL = os.getenv(
+    "RESUME_DOCTOR_URL",
+    "https://ai-career-apper-resume-doctor-69etycfa4ohbkxndweoawk.streamlit.app"
+)
+
 @app.get("/resume-doctor")
 async def redirect_resume_doctor():
     """简历医生服务代理接口"""
-    # 跳转到在线简历医生服务（Streamlit）
-    resume_doctor_url = "https://ai-career-apper-resume-doctor-69etycfa4ohbkxndweoawk.streamlit.app"
-    return RedirectResponse(url=resume_doctor_url)
+    return RedirectResponse(url=RESUME_DOCTOR_URL)
 
 @app.post("/api/login")
 def login(request: LoginRequest):
