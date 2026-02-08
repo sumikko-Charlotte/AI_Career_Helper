@@ -73,7 +73,7 @@ def get_db_connection():
         error_msg = str(e)
         error_code = e.args[0] if e.args else None
         
-        # 失败原因分类
+        # 失败原因分类（用于日志和错误信息）
         if error_code == 1045 or "Access denied" in error_msg:
             reason = "认证失败"
             print(f"❌ 数据库连接失败 [认证失败]：用户名或密码错误")
@@ -110,11 +110,67 @@ def get_db_connection():
             print(f"❌ 数据库连接失败 [Unknown]：{error_msg}")
             print(f"   错误代码: {error_code}")
         
+        # 存储错误原因到连接对象的属性中（用于 /health 接口）
         return None
     except Exception as e:
         error_type = type(e).__name__
         print(f"❌ 数据库连接失败 [{error_type}]：{e}")
         return None
+
+
+def get_db_connection_with_error():
+    """
+    获取数据库连接对象，并返回错误信息
+    
+    Returns:
+        Tuple[pymysql.Connection | None, str | None]: (连接对象, 错误信息)
+        连接成功返回 (conn, None)
+        连接失败返回 (None, 错误原因简述)
+    """
+    config = get_db_config()
+    
+    try:
+        conn = pymysql.connect(**config)
+        db_name = config.get("database", "unknown")
+        print(f"✅ 成功连接到云端数据库 {db_name}！")
+        return conn, None
+    except OperationalError as e:
+        error_msg = str(e)
+        error_code = e.args[0] if e.args else None
+        
+        # 失败原因分类（简化，不包含敏感信息）
+        if error_code == 1045 or "Access denied" in error_msg:
+            reason = "认证失败：用户名或密码错误"
+            print(f"❌ 数据库连接失败 [认证失败]：用户名或密码错误")
+        elif error_code == 2003 or "Can't connect" in error_msg:
+            if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                reason = "连接超时"
+                print(f"❌ 数据库连接失败 [超时]：连接超时")
+            elif "Name or service not known" in error_msg or "getaddrinfo failed" in error_msg:
+                reason = f"DNS解析失败：无法解析主机名 {config.get('host')}"
+                print(f"❌ 数据库连接失败 [DNS]：无法解析主机名 {config.get('host')}")
+            else:
+                reason = f"网络连接失败：无法连接到 {config.get('host')}:{config.get('port')}"
+                print(f"❌ 数据库连接失败 [网络连接]：无法连接到服务器")
+        elif error_code == 1049 or "Unknown database" in error_msg:
+            reason = f"数据库不存在：{config.get('database')}"
+            print(f"❌ 数据库连接失败 [Unknown database]：数据库 {config.get('database')} 不存在")
+        elif error_code == 1044 or "access denied" in error_msg.lower():
+            reason = f"权限不足：用户 {config.get('user')} 没有访问权限"
+            print(f"❌ 数据库连接失败 [权限不足]：用户 {config.get('user')} 没有访问权限")
+        elif "ssl" in error_msg.lower() or "tls" in error_msg.lower():
+            reason = "SSL/TLS 配置错误"
+            print(f"❌ 数据库连接失败 [SSL问题]：SSL/TLS 配置错误")
+        else:
+            reason = f"连接失败（错误代码: {error_code}）"
+            print(f"❌ 数据库连接失败 [Unknown]：{error_msg}")
+        
+        return None, reason
+    except Exception as e:
+        error_type = type(e).__name__
+        reason = f"连接失败：{error_type}"
+        print(f"❌ 数据库连接失败 [{error_type}]：{e}")
+        return None, reason
 
 
 # ==========================================

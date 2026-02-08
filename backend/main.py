@@ -348,16 +348,24 @@ def health():
     
     # 可选的数据库连接检查
     try:
-        from .db_config import get_db_connection
-        conn = get_db_connection()
+        from .db_config import get_db_connection_with_error
+        conn, db_error = get_db_connection_with_error()
         if conn:
             conn.close()
             result["db_ok"] = True
         else:
             result["db_ok"] = False
+            if db_error:
+                result["db_error"] = db_error
     except Exception as e:
         result["db_ok"] = False
-        result["db_error"] = str(e)
+        # 确保错误信息不包含敏感信息（如密码）
+        error_msg = str(e)
+        # 移除可能包含密码的错误信息
+        if "password" in error_msg.lower() or "pwd" in error_msg.lower():
+            result["db_error"] = "数据库连接失败"
+        else:
+            result["db_error"] = error_msg
     
     return result
 
