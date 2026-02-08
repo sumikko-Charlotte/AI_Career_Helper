@@ -8,18 +8,47 @@ import pymysql
 from pymysql import OperationalError
 from typing import List, Dict, Optional, Tuple
 
+# 优先读取环境变量，其次读取 .env 文件
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # 如果存在 .env 文件则加载，否则忽略
+except ImportError:
+    pass  # python-dotenv 未安装时跳过
+
 # ==========================================
-# 数据库连接配置（从环境变量读取）
+# 数据库连接配置（从环境变量读取，兼容 .env）
 # ==========================================
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST"),
-    "port": int(os.getenv("DB_PORT", "3306")),
-    "user": os.getenv("DB_USER"),
-    "password": os.getenv("DB_PASSWORD"),
-    "database": os.getenv("DB_NAME"),
-    "charset": os.getenv("DB_CHARSET", "utf8mb4"),
-    "cursorclass": pymysql.cursors.DictCursor
-}
+def get_db_config():
+    """
+    获取数据库配置字典
+    优先读取环境变量，其次读取 .env 文件
+    """
+    config = {
+        "host": os.getenv("DB_HOST"),
+        "port": int(os.getenv("DB_PORT", "3306")),
+        "user": os.getenv("DB_USER"),
+        "password": os.getenv("DB_PASSWORD"),
+        "database": os.getenv("DB_NAME"),
+        "charset": os.getenv("DB_CHARSET", "utf8mb4"),
+        "cursorclass": pymysql.cursors.DictCursor,
+        # 连接超时参数（避免 Render 卡住）
+        "connect_timeout": 10,
+        "read_timeout": 20,
+        "write_timeout": 20,
+    }
+    
+    # SSL 配置
+    db_ssl = os.getenv("DB_SSL", "false").lower() in ("true", "1", "yes")
+    if db_ssl:
+        config["ssl"] = {
+            "ca": None,
+            "cert": None,
+            "key": None,
+        }
+    
+    return config
+
+DB_CONFIG = get_db_config()
 
 
 # ==========================================
@@ -32,24 +61,59 @@ def get_db_connection():
     Returns:
         pymysql.Connection: 数据库连接对象，连接失败返回 None
     """
+    # 每次连接时重新获取配置（支持动态环境变量）
+    config = get_db_config()
+    
     try:
-        conn = pymysql.connect(**DB_CONFIG)
-        print("✅ 成功连接到云端数据库 ai_career_helper！")
+        conn = pymysql.connect(**config)
+        db_name = config.get("database", "unknown")
+        print(f"✅ 成功连接到云端数据库 {db_name}！")
         return conn
     except OperationalError as e:
         error_msg = str(e)
-        if "Access denied" in error_msg or "1045" in error_msg:
-            print(f"❌ 数据库连接失败：密码错误，请检查 db_config.py 中的 password 参数")
-        elif "Can't connect" in error_msg or "2003" in error_msg:
-            print(f"❌ 数据库连接失败：无法连接到服务器，请检查：")
-            print(f"   1. 端口号是否正确（当前：{DB_CONFIG['port']}）")
-            print(f"   2. 安全组是否开放了该端口")
-            print(f"   3. 网络连接是否正常")
+        error_code = e.args[0] if e.args else None
+        
+        # 失败原因分类
+        if error_code == 1045 or "Access denied" in error_msg:
+            reason = "认证失败"
+            print(f"❌ 数据库连接失败 [认证失败]：用户名或密码错误")
+            print(f"   错误代码: {error_code}")
+            print(f"   错误信息: {error_msg}")
+        elif error_code == 2003 or "Can't connect" in error_msg:
+            if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                reason = "超时"
+                print(f"❌ 数据库连接失败 [超时]：连接超时，请检查网络或增加超时时间")
+            elif "Name or service not known" in error_msg or "getaddrinfo failed" in error_msg:
+                reason = "DNS"
+                print(f"❌ 数据库连接失败 [DNS]：无法解析主机名 {config.get('host')}")
+            else:
+                reason = "网络连接"
+                print(f"❌ 数据库连接失败 [网络连接]：无法连接到服务器")
+                print(f"   主机: {config.get('host')}")
+                print(f"   端口: {config.get('port')}")
+                print(f"   请检查：1. 主机地址是否正确 2. 端口是否开放 3. 安全组/防火墙设置")
+        elif error_code == 1049 or "Unknown database" in error_msg:
+            reason = "Unknown database"
+            print(f"❌ 数据库连接失败 [Unknown database]：数据库 {config.get('database')} 不存在")
+            print(f"   错误代码: {error_code}")
+        elif error_code == 1044 or "access denied" in error_msg.lower():
+            reason = "权限不足"
+            print(f"❌ 数据库连接失败 [权限不足]：用户 {config.get('user')} 没有访问权限")
+            print(f"   错误代码: {error_code}")
+        elif "ssl" in error_msg.lower() or "tls" in error_msg.lower():
+            reason = "SSL问题"
+            print(f"❌ 数据库连接失败 [SSL问题]：SSL/TLS 配置错误")
+            print(f"   错误信息: {error_msg}")
+            print(f"   提示: 检查 DB_SSL 环境变量设置")
         else:
-            print(f"❌ 数据库连接失败（OperationalError）：{error_msg}")
+            reason = "Unknown"
+            print(f"❌ 数据库连接失败 [Unknown]：{error_msg}")
+            print(f"   错误代码: {error_code}")
+        
         return None
     except Exception as e:
-        print(f"❌ 数据库连接失败（未知错误）：{e}")
+        error_type = type(e).__name__
+        print(f"❌ 数据库连接失败 [{error_type}]：{e}")
         return None
 
 
