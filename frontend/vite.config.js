@@ -30,11 +30,11 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'https://unphrased-letha-lumpiest.ngrok-free.dev',
+        target: 'https://ai-career-helper-backend-u1s0.onrender.com',
         changeOrigin: true
       },
       '/static': {
-        target: 'https://unphrased-letha-lumpiest.ngrok-free.dev',
+        target: 'https://ai-career-helper-backend-u1s0.onrender.com',
         changeOrigin: true
       }
     }

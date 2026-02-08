@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 // 全局 API 基础地址配置
-const API_BASE = 'https://unphrased-letha-lumpiest.ngrok-free.dev'
+const API_BASE = 'https://ai-career-helper-backend-u1s0.onrender.com'
 
 // 创建 axios 实例，统一配置请求
 const request = axios.create({
