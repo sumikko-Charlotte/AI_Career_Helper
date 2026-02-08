@@ -1,0 +1,124 @@
+========================================
+登录请求路径修正完成报告
+========================================
+
+[1. 后端路由修正 ✅]
+========================================
+文件: ai-career-helper-backend/main.py
+
+修改内容:
+- 行341: @app.post("/api/login") → @app.post("/login")
+- 行363: @app.post("/api/register") → @app.post("/register")
+
+登录接口路径: http://127.0.0.1:8801/login
+注册接口路径: http://127.0.0.1:8801/register
+
+========================================
+
+[2. 前端请求路径修正 ✅]
+========================================
+文件: frontend/src/components/Login.vue
+
+修改内容:
+- request.post('/api/login', ...) → request.post('/login', ...)
+- request.post('/api/register', ...) → request.post('/register', ...)
+- axios.post(`${SERVER_API}/api/login`, ...) → axios.post(`${SERVER_API}/login`, ...)
+- axios.post(`${SERVER_API}/api/register`, ...) → axios.post(`${SERVER_API}/register`, ...)
+
+文件: ai-career-helper-frontend/src/components/Login.vue
+
+修改内容:
+- request.post('/api/register', ...) → request.post('/register', ...)
+- axios.post(`${SERVER_API}/api/register`, ...) → axios.post(`${SERVER_API}/register`, ...)
+
+========================================
+
+[3. 验证结果 ✅]
+========================================
+✅ 已检查所有前端文件，未发现 /api/login 或 /api/register 残留
+✅ 后端路由已更新为 /login 和 /register
+✅ 前端请求路径已更新为 /login 和 /register
+
+========================================
+
+[4. 后端服务状态检查]
+========================================
+请检查后端服务是否正常运行：
+
+1. 查看后端终端日志，确认是否有以下信息：
+   - "Uvicorn running on http://127.0.0.1:8801"
+   - 或 "Application startup complete"
+
+2. 访问后端API文档：
+   - http://127.0.0.1:8801/docs
+   - 确认能看到 /login 和 /register 接口
+
+3. 如果后端未启动，请执行：
+   cd ai-career-helper-backend
+   python main.py
+   或
+   uvicorn main:app --host 0.0.0.0 --port 8801
+
+========================================
+
+[5. 重启服务步骤]
+========================================
+
+【前端服务】
+1. 关闭当前前端服务（Ctrl+C）
+2. 进入前端目录:
+   cd frontend
+   或
+   cd ai-career-helper-frontend
+3. 重启服务:
+   npm run dev
+4. 前端将在配置的端口启动（默认 http://localhost:5000）
+
+【后端服务】
+1. 如果后端服务未启动，请执行：
+   cd ai-career-helper-backend
+   python main.py
+   或
+   uvicorn main:app --host 0.0.0.0 --port 8801
+2. 确认后端服务运行在 http://127.0.0.1:8801
+
+========================================
+
+[6. 验证登录请求]
+========================================
+登录请求路径应为: http://127.0.0.1:8801/login
+
+验证方法:
+1. 打开浏览器开发者工具（F12）
+2. 切换到 Network 标签页
+3. 在前端页面尝试登录
+4. 查看请求列表，找到 login 请求
+5. 确认请求URL为: http://127.0.0.1:8801/login
+6. 确认请求方法为: POST
+7. 确认请求体包含: {"username": "...", "password": "..."}
+
+如果看到 /api/login，说明仍有残留路径未替换。
+
+========================================
+
+[修改文件清单]
+========================================
+后端:
+- ai-career-helper-backend/main.py (登录和注册路由)
+
+前端:
+- frontend/src/components/Login.vue (登录和注册请求)
+- ai-career-helper-frontend/src/components/Login.vue (登录和注册请求)
+
+所有文件已保存！
+========================================
+
+[完成状态]
+========================================
+✅ 后端路由修正：完成
+✅ 前端请求路径修正：完成
+✅ 路径验证：完成
+✅ 文件保存：完成
+
+请重启前后端服务后测试登录功能！
+========================================

@@ -1,0 +1,90 @@
+========================================
+后端405错误和/docs页面空白修复报告
+========================================
+
+[问题分析]
+========================================
+1. 405 Method Not Allowed 错误:
+   - POST /api/recommend 返回 405
+   - 说明路由存在但方法不匹配
+
+2. /docs 页面空白:
+   - 访问 http://127.0.0.1:8801/docs 时页面空白
+   - 可能是通配路由拦截了 /docs
+
+========================================
+
+[修复内容]
+========================================
+文件: ai-career-helper-backend/main.py
+
+1. 修复通配路由，避免拦截 FastAPI 内置路由:
+   ```python
+   @app.get("/{full_path:path}")
+   async def serve_frontend(full_path: str):
+       """Serve Vue frontend for non-API routes in production"""
+       # 排除 FastAPI 内置路由和 API 路由
+       if full_path.startswith(("docs", "openapi.json", "redoc", "api", "static")):
+           raise HTTPException(status_code=404, detail="Not found")
+       frontend_index = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist", "index.html")
+       if os.path.exists(frontend_index):
+           return FileResponse(frontend_index)
+   ```
+
+说明:
+- 通配路由现在会排除 /docs、/openapi.json、/redoc、/api、/static 等路由
+- 确保 FastAPI 内置路由正常工作
+
+========================================
+
+[验证步骤]
+========================================
+1. 重启后端服务:
+   ```bash
+   # 关闭当前后端服务（Ctrl+C）
+   cd ai-career-helper-backend
+   python main.py
+   ```
+
+2. 验证 /docs 页面:
+   - 访问: http://127.0.0.1:8801/docs
+   - 应该能看到完整的 API 文档界面
+   - 应该能看到所有接口，包括 POST /api/recommend
+
+3. 测试 /api/recommend 接口:
+   - 在 /docs 页面中点击 POST /api/recommend
+   - 点击 "Try it out"
+   - 点击 "Execute"
+   - 应该返回成功响应: {"success": true, "data": [...]}
+
+4. 验证前端请求:
+   - 刷新前端页面: http://localhost:5000
+   - 打开F12 → Network
+   - 查看 POST /api/recommend 请求
+   - 状态码应为: 200（成功）✅
+
+========================================
+
+[如果仍有405错误]
+========================================
+可能的原因:
+1. 路由注册顺序问题
+2. 方法不匹配（GET vs POST）
+3. 路由路径不匹配
+
+检查方法:
+1. 访问 http://127.0.0.1:8801/docs
+2. 查看是否有 POST /api/recommend 接口
+3. 如果没有，说明路由未正确注册
+4. 如果有但返回405，检查接口实现
+
+========================================
+
+[完成状态]
+========================================
+✅ 通配路由修复：完成
+✅ FastAPI 内置路由保护：完成
+✅ 代码语法检查：完成
+
+请重启后端服务并验证！
+========================================

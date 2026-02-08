@@ -1,0 +1,73 @@
+========================================
+全项目文本替换完成报告
+========================================
+
+[替换操作]
+========================================
+搜索内容: "ngrok-free.dev"
+替换内容: "127.0.0.1:8801"
+搜索范围: 前端项目所有文件（.vue/.js/.ts等）
+
+========================================
+
+[替换结果]
+========================================
+✅ 已替换以下文件中的 ngrok 地址：
+
+1. frontend/src/utils/request.js
+   - 替换前: 'https://unphrased-letha-lumpiest.ngrok-free.dev'
+   - 替换后: 'http://127.0.0.1:8801'
+   - 同时移除了 'ngrok-skip-browser-warning' 请求头
+
+2. frontend/src/App.vue
+   - 替换前: 'https://unphrased-letha-lumpiest.ngrok-free.dev/resume-doctor'
+   - 替换后: 'http://127.0.0.1:8801/resume-doctor'
+
+3. frontend/src/components/ResumeDoctor.vue
+   - 替换前: 'https://unphrased-letha-lumpiest.ngrok-free.dev/resume-doctor?embed=true'
+   - 替换后: 'http://127.0.0.1:8801/resume-doctor?embed=true'
+
+4. frontend/vite.config.js
+   - 替换前: target: 'https://unphrased-letha-lumpiest.ngrok-free.dev' (2处)
+   - 替换后: target: 'http://127.0.0.1:8801' (2处)
+
+5. frontend/src/components/VirtualExperiment.vue
+   - 替换前: 注释中的 'https://unphrased-letha-lumpiest.ngrok-free.dev'
+   - 替换后: 'http://127.0.0.1:8801'
+   - 替换前: 错误提示中的 'https://unphrased-letha-lumpiest.ngrok-free.dev'
+   - 替换后: 'http://127.0.0.1:8801'
+
+========================================
+
+[验证结果]
+========================================
+✅ 已检查所有前端文件，未发现 ngrok-free.dev 残留
+
+========================================
+
+[下一步操作]
+========================================
+请重启前端服务：
+
+1. 关闭当前前端服务（Ctrl+C）
+
+2. 进入前端目录:
+   cd frontend
+   或
+   cd ai-career-helper-frontend
+
+3. 重启服务:
+   npm run dev
+
+4. 前端将在配置的端口启动（默认 http://localhost:5000）
+
+========================================
+
+[注意事项]
+========================================
+- 所有 ngrok 地址已替换为本地后端地址 http://127.0.0.1:8801
+- 确保后端服务已启动在 8801 端口
+- 如果使用 ai-career-helper-frontend 目录，该目录已无 ngrok 残留
+- 如果使用 frontend 目录，已全部替换完成
+
+========================================

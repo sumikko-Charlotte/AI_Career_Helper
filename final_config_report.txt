@@ -1,0 +1,203 @@
+========================================
+项目配置终极修改完成报告
+本地开发+腾讯云函数线上部署双兼容
+========================================
+
+[一、后端 main.py 终极配置 ✅]
+========================================
+文件: ai-career-helper-backend/main.py
+
+1. APIRouter 全局 /api 前缀配置:
+   ```python
+   from fastapi import FastAPI, APIRouter
+   
+   app = FastAPI(title="AI职业规划平台")
+   
+   # 全局路由前缀，所有接口自动带 /api，兼容前端所有请求
+   api_router = APIRouter(prefix="/api")
+   app.include_router(api_router)
+   ```
+
+2. 跨域配置（本地+Vercel线上全允许）:
+   ```python
+   app.add_middleware(
+       CORSMiddleware,
+       allow_origins=[
+           "http://localhost:5000",
+           "http://127.0.0.1:5000",
+           "*"  # 允许所有来源
+       ],
+       allow_credentials=True,
+       allow_methods=["*"],
+       allow_headers=["*"],
+   )
+   ```
+
+3. 所有接口已改为使用 @api_router:
+   - @api_router.post("/login") → 实际路径: /api/login
+   - @api_router.post("/register") → 实际路径: /api/register
+   - @api_router.post("/recommend") → 实际路径: /api/recommend
+   - 其他所有接口均已绑定到 api_router
+
+4. 云函数兼容启动代码:
+   ```python
+   if __name__ == "__main__":
+       import uvicorn
+       uvicorn.run(app, host="0.0.0.0", port=8801)
+   ```
+
+========================================
+
+[二、前端 Vite 代理修复 ✅]
+========================================
+文件: frontend/vite.config.js
+文件: ai-career-helper-frontend/vite.config.js
+
+修改内容:
+- 删除所有 proxy /api 代理配置
+- 前端请求本地时直接使用：http://127.0.0.1:8801/api/xxx
+- 前端请求线上腾讯云时直接使用：云函数地址/api/xxx
+
+配置示例:
+```javascript
+server: {
+  host: '0.0.0.0',
+  port: 5000,
+  allowedHosts: true
+  // 删除 proxy 配置，前端请求直接使用完整地址
+}
+```
+
+========================================
+
+[三、前端 Axios 全局统一配置 ✅]
+========================================
+文件: frontend/src/utils/request.js
+文件: ai-career-helper-frontend/src/utils/request.js
+
+配置内容:
+```javascript
+// 全局 API 基础地址配置
+// 本地开发：http://127.0.0.1:8801
+// 线上部署：通过环境变量 VITE_API_BASE 设置腾讯云函数地址
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8801'
+
+// 创建 axios 实例，统一配置请求
+const request = axios.create({
+  baseURL: API_BASE,
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+})
+```
+
+说明:
+- 本地开发：baseURL = "http://127.0.0.1:8801"
+- 线上部署：baseURL = 环境变量 VITE_API_BASE（腾讯云函数HTTP地址）
+- 所有请求自动拼接 /api，与后端完全匹配
+
+========================================
+
+[四、强制清理缓存步骤]
+========================================
+
+1. 前端执行：
+   ```bash
+   cd frontend
+   # 或
+   cd ai-career-helper-frontend
+   
+   npm run dev --force
+   ```
+
+2. 浏览器使用无痕模式打开，清除所有旧缓存
+
+3. 后端完全关闭进程，重新运行：
+   ```bash
+   cd ai-career-helper-backend
+   python main.py
+   ```
+
+========================================
+
+[五、验证规则]
+========================================
+
+本地登录请求地址:
+- POST http://127.0.0.1:8801/api/login ✅
+
+线上登录请求地址:
+- POST 腾讯云地址/api/login ✅
+
+两个地址结构完全一致，代码无需两套，一键切换即可部署
+
+验证方法:
+1. 打开浏览器开发者工具（F12）
+2. 切换到 Network 标签页
+3. 尝试登录，查看请求URL
+4. 本地开发应显示: http://127.0.0.1:8801/api/login
+5. 线上部署应显示: 腾讯云地址/api/login
+
+========================================
+
+[六、接口路径对照表]
+========================================
+
+后端路由定义（代码中）:
+- @api_router.post("/login") → 实际路径: /api/login
+- @api_router.post("/register") → 实际路径: /api/register
+- @api_router.post("/recommend") → 实际路径: /api/recommend
+- @api_router.get("/admin/profile") → 实际路径: /api/admin/profile
+- @api_router.post("/admin/profile/update") → 实际路径: /api/admin/profile/update
+- @api_router.get("/history") → 实际路径: /api/history
+- @api_router.post("/chat") → 实际路径: /api/chat
+- @api_router.post("/generate_roadmap") → 实际路径: /api/generate_roadmap
+- @api_router.post("/agent") → 实际路径: /api/agent
+- @api_router.post("/apply") → 实际路径: /api/apply
+- @api_router.get("/user/profile") → 实际路径: /api/user/profile
+- @api_router.post("/user/profile") → 实际路径: /api/user/profile
+- @api_router.post("/resume/analyze") → 实际路径: /api/resume/analyze
+- @api_router.post("/user/change_password") → 实际路径: /api/user/change_password
+- @api_router.post("/user/upload_avatar") → 实际路径: /api/user/upload_avatar
+- @api_router.post("/resume/generate") → 实际路径: /api/resume/generate
+- @api_router.post("/resume/upload") → 实际路径: /api/resume/upload
+- @api_router.get("/resume/getUploadedList") → 实际路径: /api/resume/getUploadedList
+- @api_router.post("/resume/delete") → 实际路径: /api/resume/delete
+- @api_router.post("/user/addTask") → 实际路径: /api/user/addTask
+- @api_router.post("/simulation/start") → 实际路径: /api/simulation/start
+- @api_router.post("/virtual-career/questions") → 实际路径: /api/virtual-career/questions
+- @api_router.post("/analyze-experiment") → 实际路径: /api/analyze-experiment
+- @api_router.post("/generate-career") → 实际路径: /api/generate-career
+- @api_router.post("/generate-interview-report") → 实际路径: /api/generate-interview-report
+
+保留使用 @app 的接口（不添加 /api 前缀）:
+- @app.get("/") → 根路径
+- @app.get("/{full_path:path}") → 通配路径
+
+========================================
+
+[七、环境变量配置]
+========================================
+
+本地开发:
+- 无需配置环境变量，使用默认值: http://127.0.0.1:8801
+
+线上部署（Vercel/腾讯云）:
+- 设置环境变量: VITE_API_BASE = 你的腾讯云函数HTTP地址
+- 例如: VITE_API_BASE = https://xxx-xxx.ap-beijing.tencentscf.com
+
+========================================
+
+[完成状态]
+========================================
+✅ 后端 APIRouter 配置：完成
+✅ 所有接口绑定到 api_router：完成
+✅ CORS 跨域配置：完成
+✅ 前端 Vite 代理删除：完成
+✅ 前端 Axios 全局配置：完成
+✅ 云函数兼容启动代码：完成
+✅ 接口路径统一：完成
+
+请按照上述步骤重启前后端服务并验证接口路径！
+========================================

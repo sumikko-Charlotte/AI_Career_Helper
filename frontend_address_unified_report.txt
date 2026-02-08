@@ -1,0 +1,117 @@
+========================================
+前端请求地址统一检查报告
+========================================
+
+[1. 基础地址配置 ✅]
+========================================
+文件: frontend/src/utils/request.js
+- API_BASE = 'http://127.0.0.1:8801' ✅
+
+文件: frontend/vite.config.js
+- proxy target = 'http://127.0.0.1:8801' ✅
+
+文件: frontend/src/components/Login.vue
+- SERVER_API = 'http://127.0.0.1:8801' ✅ (已从3000修正)
+
+文件: frontend/src/views/admin/UserManage.vue
+- SERVER_API = 'http://127.0.0.1:8801' ✅ (已从3000修正)
+
+========================================
+
+[2. 登录和注册接口 ✅]
+========================================
+文件: frontend/src/components/Login.vue
+- request.post('/login', ...) ✅ (无/api前缀)
+- request.post('/register', ...) ✅ (无/api前缀)
+- axios.post('${SERVER_API}/login', ...) ✅ (无/api前缀)
+- axios.post('${SERVER_API}/register', ...) ✅ (无/api前缀)
+
+后端路由:
+- @app.post("/login") ✅
+- @app.post("/register") ✅
+
+登录接口完整路径: http://127.0.0.1:8801/login ✅
+注册接口完整路径: http://127.0.0.1:8801/register ✅
+
+========================================
+
+[3. 其他接口路径检查]
+========================================
+以下接口仍使用 /api/ 前缀（后端尚未修改）：
+
+前端请求路径:
+- ${API_BASE}/api/resume/analyze
+- ${API_BASE}/api/resume/generate
+- ${API_BASE}/api/resume/upload
+- ${API_BASE}/api/resume/getUploadedList
+- ${API_BASE}/api/resume/delete
+- ${API_BASE}/api/user/profile
+- ${API_BASE}/api/user/change_password
+- ${API_BASE}/api/user/upload_avatar
+- ${API_BASE}/api/user/addTask
+- ${API_BASE}/api/admin/profile
+- ${API_BASE}/api/admin/profile/update
+- ${API_BASE}/api/admin/profile/change-password
+- ${API_BASE}/api/history
+- ${API_BASE}/api/history/add
+- ${API_BASE}/api/recommend
+- ${API_BASE}/api/chat
+- ${API_BASE}/api/generate_roadmap
+- ${API_BASE}/api/agent
+- ${API_BASE}/api/apply
+- ${API_BASE}/api/virtual-career/questions
+- ${API_BASE}/api/analyze-experiment
+- ${API_BASE}/api/generate-career
+- ${API_BASE}/api/generate-interview-report
+- ${API_BASE}/api/simulation/start
+
+后端路由:
+- 以上接口在后端仍使用 /api/ 前缀
+
+========================================
+
+[4. 端口统一检查 ✅]
+========================================
+✅ 所有请求地址已统一为 8801 端口
+✅ 未发现 8000、8502、3000 等其他端口
+
+========================================
+
+[5. 需要处理的问题]
+========================================
+⚠️ 注意：用户要求"无/api前缀"，但后端大部分接口仍使用 /api/ 前缀
+
+选项1: 修改后端所有接口去掉 /api 前缀（推荐）
+- 需要修改后端 main.py 中所有路由定义
+- 需要修改前端所有请求路径
+- 工作量大，但符合用户要求
+
+选项2: 保持现状
+- 登录和注册接口已去掉 /api 前缀 ✅
+- 其他接口保持 /api/ 前缀（与后端一致）
+- 需要用户确认是否继续修改
+
+========================================
+
+[6. 当前状态总结]
+========================================
+✅ 基础地址已统一: http://127.0.0.1:8801
+✅ 端口已统一: 8801
+✅ 登录接口: http://127.0.0.1:8801/login (无/api前缀)
+✅ 注册接口: http://127.0.0.1:8801/register (无/api前缀)
+⚠️ 其他接口: 仍使用 /api/ 前缀（与后端一致）
+
+========================================
+
+[7. 建议]
+========================================
+1. 如果用户要求所有接口都去掉 /api 前缀：
+   - 需要修改后端所有路由定义
+   - 需要修改前端所有请求路径
+   - 建议分批次进行，避免影响现有功能
+
+2. 如果只要求登录接口无 /api 前缀：
+   - 当前已完成 ✅
+   - 其他接口保持现状即可
+
+========================================

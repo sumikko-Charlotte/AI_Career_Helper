@@ -1,0 +1,83 @@
+========================================
+前端链接替换完成报告
+========================================
+
+[替换信息]
+========================================
+旧链接: https://unphrased-letha-lumpiest.ngrok-free.dev
+新链接: https://ai-career-apper-resume-doctor-69etycfa4ohbkxndweoawk.streamlit.app
+替换时间: 2026-01-30
+
+========================================
+
+[已替换的文件]
+========================================
+
+1. frontend/src/App.vue
+   - 位置: 第369行
+   - 原内容: window.open('https://unphrased-letha-lumpiest.ngrok-free.dev/resume-doctor', '_blank')
+   - 新内容: window.open('https://ai-career-apper-resume-doctor-69etycfa4ohbkxndweoawk.streamlit.app', '_blank')
+   - 说明: goToResumeDoctor 函数中的链接
+
+2. frontend/src/components/ResumeDoctor.vue
+   - 位置: 第325行
+   - 原内容: src="https://unphrased-letha-lumpiest.ngrok-free.dev/resume-doctor?embed=true"
+   - 新内容: src="https://ai-career-apper-resume-doctor-69etycfa4ohbkxndweoawk.streamlit.app?embed=true"
+   - 说明: iframe 嵌入链接
+
+3. frontend/src/components/VirtualExperiment.vue
+   - 位置1: 第9行（注释）
+   - 原内容: // If not set, fall back to ngrok public address (https://unphrased-letha-lumpiest.ngrok-free.dev).
+   - 新内容: // If not set, fall back to Streamlit public address (https://ai-career-apper-resume-doctor-69etycfa4ohbkxndweoawk.streamlit.app).
+   
+   - 位置2: 第221行（错误消息）
+   - 原内容: ElMessage.error('网络异常或无法连接后端，请检查后端是否已启动并确认 VITE_API_BASE 指向正确地址（例如 https://unphrased-letha-lumpiest.ngrok-free.dev）')
+   - 新内容: ElMessage.error('网络异常或无法连接后端，请检查后端是否已启动并确认 VITE_API_BASE 指向正确地址（例如 https://ai-career-apper-resume-doctor-69etycfa4ohbkxndweoawk.streamlit.app）')
+
+========================================
+
+[验证结果]
+========================================
+✅ 所有旧链接已成功替换
+✅ 新链接格式正确
+✅ 无遗漏文件
+
+========================================
+
+[下一步操作]
+========================================
+
+1. 重启前端服务:
+   - 按 Ctrl+C 停止当前前端服务（如果正在运行）
+   - 执行: cd frontend
+   - 执行: npm run dev
+
+2. 验证修改:
+   - 打开浏览器访问: http://localhost:5000
+   - 点击"一键演示"超链接
+   - 确认能跳转到新的 Streamlit 页面且无报错
+
+3. 检查功能:
+   - 测试简历医生功能是否正常
+   - 确认 iframe 嵌入是否正常显示
+   - 检查控制台是否有错误信息
+
+========================================
+
+[注意事项]
+========================================
+1. 确保 Streamlit 应用已部署并可访问
+2. 如果遇到跨域问题，检查 Streamlit 应用的 CORS 配置
+3. 如果 iframe 无法加载，检查 Streamlit 应用的嵌入设置
+
+========================================
+
+[完成状态]
+========================================
+✅ 链接替换：完成
+✅ 文件修改：3个文件
+✅ 替换位置：4处
+✅ 验证通过：无遗漏
+
+请按照上述步骤重启前端服务并验证功能！
+========================================

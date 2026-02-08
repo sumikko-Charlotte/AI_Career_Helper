@@ -9,15 +9,15 @@ from pymysql import OperationalError
 from typing import List, Dict, Optional, Tuple
 
 # ==========================================
-# 数据库连接配置（固定值，仅需修改 password）
+# 数据库连接配置（从环境变量读取）
 # ==========================================
 DB_CONFIG = {
-    "host": "bj-cynosdbmysql-grp-ovt0aqds.sql.tencentcdb.com",
-    "port": 20603,
-    "user": "root",
-    "password": "AIcareer@helper123",    # ⚠️ 仅需替换这1个参数
-    "database": "ai_career_helper",
-    "charset": "utf8mb4",
+    "host": os.getenv("DB_HOST"),
+    "port": int(os.getenv("DB_PORT", "3306")),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "database": os.getenv("DB_NAME"),
+    "charset": os.getenv("DB_CHARSET", "utf8mb4"),
     "cursorclass": pymysql.cursors.DictCursor
 }
 

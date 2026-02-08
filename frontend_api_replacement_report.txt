@@ -1,0 +1,78 @@
+========================================
+前端接口地址替换完成报告
+========================================
+
+[已修改的文件]
+========================================
+1. src/utils/request.js
+   - API_BASE 默认值: http://127.0.0.1:8801
+
+2. src/components/Login.vue
+   - 行92: 登录接口地址 -> http://127.0.0.1:8801/login
+   - 行114: 同步登录接口 -> http://127.0.0.1:8801/login
+   - 行11: SERVER_API 默认值 -> http://127.0.0.1:8801
+
+3. vite.config.js
+   - 行35: 代理 /api target -> http://127.0.0.1:8801
+   - 行39: 代理 /static target -> http://127.0.0.1:8801
+
+4. src/components/VirtualExperiment.vue
+   - API_BASE 默认值: http://127.0.0.1:8801
+
+5. src/App.vue
+   - API_BASE 默认值: http://127.0.0.1:8801
+
+6. src/components/ResumeDoctor.vue
+   - API_BASE 默认值: http://127.0.0.1:8801
+
+7. src/views/admin/UserManage.vue
+   - SERVER_API 默认值: http://127.0.0.1:8801
+
+8. src/views/admin/ResumeTasks.vue
+   - API_BASE 默认值: http://127.0.0.1:8801
+
+9. src/views/admin/AdminProfile.vue
+   - API_BASE 默认值: http://127.0.0.1:8801
+
+10. src/components/UserProfile.vue
+    - API_BASE 默认值: http://127.0.0.1:8801
+
+11. src/components/HistoryRecord.vue
+    - API_BASE 默认值: http://127.0.0.1:8801
+
+12. src/components/CareerExperience.vue
+    - API_BASE 默认值: http://127.0.0.1:8801
+
+13. src/components/AdminLayout.vue
+    - API_BASE 默认值: http://127.0.0.1:8801
+
+========================================
+
+[新接口地址配置]
+========================================
+后端基础URL: http://127.0.0.1:8801
+登录接口: http://127.0.0.1:8801/login
+
+所有API调用将使用: http://127.0.0.1:8801 作为基础地址
+========================================
+
+[重要提示]
+========================================
+⚠️ 请重启前端服务以使配置生效！
+
+重启命令:
+  cd ai-career-helper-frontend
+  npm run dev
+
+前端服务将在 http://localhost:5000 启动
+确保后端服务在 http://127.0.0.1:8801 运行
+========================================
+
+[验证清单]
+========================================
+- [ ] 后端服务已启动在 http://127.0.0.1:8801
+- [ ] 前端服务已重启
+- [ ] 浏览器控制台无CORS错误
+- [ ] 登录功能正常
+- [ ] API调用正常
+========================================

@@ -1,0 +1,173 @@
+========================================
+后端API路由前缀强制配置完成报告
+========================================
+
+[1. 后端APIRouter配置 ✅]
+========================================
+文件: ai-career-helper-backend/main.py
+
+配置内容:
+```python
+from fastapi import FastAPI, APIRouter
+
+# 创建 FastAPI 应用
+app = FastAPI()
+
+# 创建带 /api 前缀的路由器（全局 /api 前缀）
+router = APIRouter(prefix="/api")
+
+# 将路由器包含到应用中
+app.include_router(router)
+```
+
+========================================
+
+[2. 接口绑定到router ✅]
+========================================
+所有接口装饰器已改为使用 @router:
+
+- @router.post("/login") → 实际路径: /api/login
+- @router.post("/register") → 实际路径: /api/register
+- @router.post("/recommend") → 实际路径: /api/recommend
+- @router.get("/admin/profile") → 实际路径: /api/admin/profile
+- @router.post("/admin/profile/update") → 实际路径: /api/admin/profile/update
+- @router.post("/admin/profile/change-password") → 实际路径: /api/admin/profile/change-password
+- @router.get("/history") → 实际路径: /api/history
+- @router.post("/chat") → 实际路径: /api/chat
+- @router.post("/generate_roadmap") → 实际路径: /api/generate_roadmap
+- @router.post("/agent") → 实际路径: /api/agent
+- @router.post("/apply") → 实际路径: /api/apply
+- @router.get("/user/profile") → 实际路径: /api/user/profile
+- @router.post("/user/profile") → 实际路径: /api/user/profile
+- @router.post("/resume/analyze") → 实际路径: /api/resume/analyze
+- @router.post("/user/change_password") → 实际路径: /api/user/change_password
+- @router.post("/user/upload_avatar") → 实际路径: /api/user/upload_avatar
+- @router.post("/resume/generate") → 实际路径: /api/resume/generate
+- @router.post("/resume/upload") → 实际路径: /api/resume/upload
+- @router.get("/resume/getUploadedList") → 实际路径: /api/resume/getUploadedList
+- @router.post("/resume/delete") → 实际路径: /api/resume/delete
+- @router.post("/user/addTask") → 实际路径: /api/user/addTask
+- @router.post("/simulation/start") → 实际路径: /api/simulation/start
+- @router.post("/virtual-career/questions") → 实际路径: /api/virtual-career/questions
+- @router.post("/analyze-experiment") → 实际路径: /api/analyze-experiment
+- @router.post("/generate-career") → 实际路径: /api/generate-career
+- @router.post("/generate-interview-report") → 实际路径: /api/generate-interview-report
+
+保留使用 @app 的接口（根路径和静态文件）:
+- @app.get("/") → 根路径，不添加 /api 前缀
+- @app.get("/{full_path:path}") → 通配路径，不添加 /api 前缀
+- @app.get("/resume-doctor") → 简历医生代理，不添加 /api 前缀
+
+========================================
+
+[3. 前端登录请求地址修正 ✅]
+========================================
+文件: frontend/src/components/Login.vue
+
+修改内容:
+- request.post('/login', ...) → request.post('/api/login', ...)
+- request.post('/register', ...) → request.post('/api/register', ...)
+- axios.post('${SERVER_API}/login', ...) → axios.post('${SERVER_API}/api/login', ...)
+- axios.post('${SERVER_API}/register', ...) → axios.post('${SERVER_API}/api/register', ...)
+
+文件: ai-career-helper-frontend/src/components/Login.vue
+
+修改内容:
+- axios.post('http://127.0.0.1:8801/login', ...) → axios.post('http://127.0.0.1:8801/api/login', ...)
+- request.post('/register', ...) → request.post('/api/register', ...)
+- axios.post('${SERVER_API}/register', ...) → axios.post('${SERVER_API}/api/register', ...)
+
+========================================
+
+[4. 重启后端服务]
+========================================
+请执行以下步骤：
+
+1. 关闭当前后端服务（Ctrl+C）
+
+2. 进入后端目录:
+   cd ai-career-helper-backend
+   或
+   cd backend
+
+3. 重启服务:
+   python main.py
+   或
+   uvicorn main:app --host 0.0.0.0 --port 8801
+
+4. 确认终端显示:
+   Uvicorn running on http://127.0.0.1:8801 (Press CTRL+C to quit)
+
+5. 访问 API 文档验证:
+   http://127.0.0.1:8801/docs
+   - 应该看到所有接口都有 /api 前缀
+   - 例如：POST /api/login
+
+========================================
+
+[5. 重启前端服务]
+========================================
+请执行以下步骤：
+
+1. 关闭当前前端服务（Ctrl+C）
+
+2. 进入前端目录:
+   cd frontend
+   或
+   cd ai-career-helper-frontend
+
+3. 重启服务:
+   npm run dev
+
+4. 前端将在配置的端口启动（默认 http://localhost:5000）
+
+========================================
+
+[6. 验证接口路径]
+========================================
+后端实际接口路径（使用 APIRouter prefix="/api" 后）:
+- http://127.0.0.1:8801/api/login ✅
+- http://127.0.0.1:8801/api/register ✅
+- http://127.0.0.1:8801/api/recommend ✅
+- http://127.0.0.1:8801/api/admin/profile ✅
+- 其他所有接口都会自动添加 /api 前缀
+
+前端请求路径（已修正）:
+- /api/login → 匹配 http://127.0.0.1:8801/api/login ✅
+- /api/register → 匹配 http://127.0.0.1:8801/api/register ✅
+- /api/recommend → 匹配 http://127.0.0.1:8801/api/recommend ✅
+
+========================================
+
+[7. 验证步骤]
+========================================
+1. 重启后端服务后，访问:
+   http://127.0.0.1:8801/docs
+
+2. 在 API 文档中查看接口路径:
+   - 应该看到所有接口都有 /api 前缀
+   - 例如：POST /api/login
+
+3. 测试登录接口:
+   - 使用 Postman 或 curl 测试:
+     curl -X POST http://127.0.0.1:8801/api/login \
+       -H "Content-Type: application/json" \
+       -d '{"username":"admin","password":"123456"}'
+
+4. 检查前端请求:
+   - 打开浏览器开发者工具（F12）
+   - 切换到 Network 标签页
+   - 尝试登录，查看请求URL是否为 http://127.0.0.1:8801/api/login
+
+========================================
+
+[完成状态]
+========================================
+✅ 后端 APIRouter 配置：完成
+✅ 接口绑定到 router：完成
+✅ 前端登录请求地址修正：完成
+✅ 重启服务指南：完成
+✅ 验证步骤：完成
+
+请按照上述步骤重启前后端服务并验证接口路径！
+========================================

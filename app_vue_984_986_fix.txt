@@ -1,0 +1,124 @@
+========================================
+App.vue 第984/986行错误修复报告
+========================================
+
+[问题分析]
+========================================
+错误信息: POST http://localhost:5000/api/recommend 404 (Not Found)
+
+根本原因:
+1. 第984/986行使用了 `axios.post(\`${API_BASE}/api/recommend\`)`
+2. 直接使用 axios 不会使用我们配置的 request 实例
+3. 如果 API_BASE 为空或未设置，请求会发送到当前页面地址（localhost:5000）
+4. 即使 API_BASE 设置了，手动拼接 `/api` 也会导致重复（拦截器已经添加）
+
+========================================
+
+[修复内容]
+========================================
+文件: frontend/src/App.vue
+行984: 修复 fetchJobsData 函数
+
+修改前:
+```javascript
+const res = await axios.post(`${API_BASE}/api/recommend`)
+```
+
+修改后:
+```javascript
+// 使用 request 实例，拦截器会自动添加 /api 前缀
+const res = await request.post('/recommend')
+```
+
+文件: ai-career-helper-frontend/src/App.vue
+行986: 修复 fetchJobsData 函数
+
+修改前:
+```javascript
+const res = await axios.post(`${API_BASE}/api/recommend`)
+```
+
+修改后:
+```javascript
+// 使用 request 实例，拦截器会自动添加 /api 前缀
+const res = await request.post('/recommend')
+```
+
+同时修复:
+1. 添加 request 导入: `import request from '@/utils/request.js'`
+2. 修复 API_BASE 默认值: `const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8801'`
+
+========================================
+
+[修复原理]
+========================================
+1. 使用 request 实例:
+   - baseURL 已配置为 http://127.0.0.1:8801
+   - 请求拦截器会自动添加 /api 前缀
+
+2. 请求流程:
+   - 前端: request.post('/recommend')
+   - 拦截器: /recommend → /api/recommend
+   - 最终URL: http://127.0.0.1:8801/api/recommend ✅
+
+3. 避免重复拼接:
+   - 不再手动拼接 /api
+   - 不再手动拼接 API_BASE
+   - 统一使用 request 实例
+
+========================================
+
+[其他需要修复的地方]
+========================================
+以下位置也使用了 axios.post 直接调用，建议统一改为 request.post:
+
+frontend/src/App.vue:
+- 行914: axios.post(`${API_BASE}/api/analyze-experiment`, ...)
+- 行962: axios.post(`${API_BASE}/api/analyze-experiment`, ...)
+- 行1479: axios.post(`${API_BASE}/api/agent`, ...)
+- 行1514: axios.post(`${API_BASE}/api/apply`, ...)
+- 行1848: axios.post(`${API_BASE}/api/analyze_resume`, ...)
+- 行1868: axios.post(`${API_BASE}/api/generate_roadmap`, ...)
+- 行2011: axios.post(`${API_BASE}/api/analyze-experiment`, ...)
+- 行2078: axios.post(`${API_BASE}/api/analyze-experiment`, ...)
+- 行2222: axios.post(`${API_BASE}/api/generate-career`, ...)
+
+建议统一修复，确保所有请求都使用 request 实例。
+
+========================================
+
+[验证步骤]
+========================================
+1. 保存所有修改的文件 ✅
+
+2. 重启前端服务:
+   ```bash
+   cd frontend
+   # 或
+   cd ai-career-helper-frontend
+   
+   npm run dev
+   ```
+
+3. 打开浏览器访问:
+   http://localhost:5000
+
+4. 打开F12 → Network，查看请求:
+   - 请求URL: http://127.0.0.1:8801/api/recommend ✅
+   - 状态码: 200（成功）✅
+
+5. 检查控制台:
+   - 不应再有 404 错误 ✅
+
+========================================
+
+[完成状态]
+========================================
+✅ 第984行修复：完成
+✅ 第986行修复：完成
+✅ request 导入添加：完成
+✅ API_BASE 默认值修复：完成
+✅ 代码语法检查：完成
+
+请按照上述步骤重启前端服务并验证！
+========================================
