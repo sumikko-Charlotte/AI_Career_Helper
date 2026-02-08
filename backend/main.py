@@ -39,7 +39,12 @@ if os.path.exists(frontend_dist):
 # --- 1. 跨域配置 (必不可少) ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://ai-career-helper-lac.vercel.app",
+        "https://ai-career-helper-2tonbo8a1-ai-career-helper-d699b731.vercel.app",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
