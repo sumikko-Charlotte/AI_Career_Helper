@@ -1,0 +1,25 @@
+========================================
+登录接口替换完成报告
+========================================
+
+[修改文件]
+文件: ai-career-helper-frontend\src\components\Login.vue
+
+[修改详情]
+1. 行92-95: 主登录接口
+   原: request.post('/api/login', { username, password })
+   新: axios.post('https://1401892234-iz2wac2chq.ap-beijing.tencentscf.com/login', { username, password })
+
+2. 行114: 同步登录接口
+   原: axios.post(`${SERVER_API}/api/login`, { username, password })
+   新: axios.post('https://1401892234-iz2wac2chq.ap-beijing.tencentscf.com/login', { username, password })
+
+[新接口地址]
+https://1401892234-iz2wac2chq.ap-beijing.tencentscf.com/login
+
+[说明]
+- 所有登录相关的接口地址已替换为腾讯云SCF地址
+- 仅修改了接口地址，其余代码逻辑保持不变
+- 文件已保存
+
+========================================

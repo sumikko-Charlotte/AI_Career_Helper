@@ -31,7 +31,7 @@
    curl -X POST http://127.0.0.1:3000/api/register -H "Content-Type: application/json" -d '{"username":"testuser","password":"test123"}'
 
 3) 登录（更新 last_login）：
-   curl -X POST http://127.0.0.1:3000/api/login -H "Content-Type: application/json" -d '{"username":"testuser","password":"test123"}'
+   curl -X POST https://1401892234-iz2wac2chq.ap-beijing.tencentscf.com/login -H "Content-Type: application/json" -d '{"username":"testuser","password":"test123"}'
 
 4) 增加任务数统计：
    curl -X POST http://127.0.0.1:3000/api/user/addTask -H "Content-Type: application/json" -d '{"username":"testuser"}'

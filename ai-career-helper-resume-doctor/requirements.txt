@@ -1,0 +1,15 @@
+# Streamlit 核心框架
+streamlit>=1.28.0
+
+# PDF 处理
+pypdf>=3.0.0
+
+# AI 服务
+openai>=1.0.0
+
+# 环境变量管理
+python-dotenv>=1.0.0
+streamlit 
+pdfplumber 
+python-dotenv 
+openai 

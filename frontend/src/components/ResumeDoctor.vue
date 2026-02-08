@@ -322,7 +322,7 @@ const copyContent = async () => {
     <div v-show="currentMode === 'vip'" class="vip-container">
       <iframe
         :key="currentMode"
-        src="https://unphrased-letha-lumpiest.ngrok-free.dev/resume-doctor?embed=true"
+        src="https://ai-career-apper-resume-doctor-69etycfa4ohbkxndweoawk.streamlit.app?embed=true"
         class="streamlit-iframe"
         title="AI简历医生（可运行版）"
         loading="lazy"
