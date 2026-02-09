@@ -1,8 +1,11 @@
 import axios from 'axios'
 
 // 全局 API 基础地址配置
-// 部署时通过 Vercel 环境变量 VITE_API_BASE 设置，格式：https://your-backend.onrender.com
-const API_BASE = import.meta.env.VITE_API_BASE || '{{RENDER_BACKEND_URL}}'
+// 优先从 Vercel 环境变量 VITE_API_BASE 读取，未配置时默认指向 Render 后端服务
+// Render 后端地址：https://ai-career-helper-backend-u1s0.onrender.com
+const API_BASE =
+  import.meta.env.VITE_API_BASE ||
+  'https://ai-career-helper-backend-u1s0.onrender.com'
 
 // 创建 axios 实例，统一配置请求
 const request = axios.create({

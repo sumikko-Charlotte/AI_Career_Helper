@@ -93,4 +93,20 @@ const router = createRouter({
   routes
 })
 
+// 路由白名单：无需登录即可访问的页面
+export const whiteList = [
+  '/',
+  '/login',
+  '/about-us',
+  '/privacy-policy',
+  '/explore'
+]
+
+// 预留路由守卫（当前不强制校验登录，仅作为白名单配置入口）
+router.beforeEach((to, from, next) => {
+  // 未来若需要登录拦截，可在此处增加鉴权逻辑。
+  // 目前仅保证白名单路径显式存在（如 /about-us /privacy-policy 等）。
+  next()
+})
+
 export default router
