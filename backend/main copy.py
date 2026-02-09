@@ -11,10 +11,19 @@ from openai import OpenAI
 
 app = FastAPI()
 
-# 允许跨域（让前端网页能访问后端）
+# 允许跨域（让前端网页能访问后端，支持自定义域名 + Cookie 登录）
+ALLOWED_ORIGINS = [
+    # 本地开发
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    # 正式域名
+    "https://aicareerhelper.xyz",
+    "https://www.aicareerhelper.xyz",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
