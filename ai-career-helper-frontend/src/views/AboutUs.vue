@@ -28,19 +28,21 @@
         <li><strong>虚拟职业体验</strong>：沉浸式体验产品经理、算法工程师、中学教师、投行分析师等热门职业真实工作流程，完成从用户调研、需求分析到落地执行的完整环节，提前验证职业兴趣与适配度。</li>
       </ul>
 
-      <h2 style="font-size: 22px; color: #333; font-weight: 600; margin: 30px 0 15px;">我们的团队</h2>
-      <p style="line-height: 1.8; font-size: 16px; color: #666; margin: 10px 0; text-indent: 2em;">
-        我们是来自北京外国语大学、北京邮电大学、北京科技大学、中央财经大学的9名本科生，经分工协作开发出「职航——AI辅助的大学生生涯成长平台」。我们不仅是技术的开发者，更是产品的深度用户——因为我们自己就是正在生涯探索的学生，更懂同龄人的职业困惑与需求。
-      </p>
+      <section class="team-section">
+        <h2>我们的团队</h2>
+        <p>
+          我们是来自北京外国语大学、北京邮电大学、北京科技大学、中央财经大学的9名本科生，经分工协作开发出「职航——AI辅助的大学生生涯成长平台」。我们不仅是技术的开发者，更是产品的深度用户——因为我们自己就是正在生涯探索的学生，更懂同龄人的职业困惑与需求。
+        </p>
+      </section>
 
-      <h2 style="font-size: 22px; color: #333; font-weight: 600; margin: 30px 0 15px;">联系我们</h2>
-      <p style="line-height: 1.8; font-size: 16px; color: #666; margin: 10px 0;">
-        官方邮箱：2025211995@bupt.cn<br>
-        用户反馈：<el-link type="primary" href="javascript:;">点击提交你的建议</el-link><br>
-        商务合作：sumikko@bupt.edu.cn<br>
-        办公地址：XX大学科技园A座208室<br>
-        联系电话：18671211003
-      </p>
+      <section class="contact-section">
+        <h2>联系我们</h2>
+        <p>官方邮箱：2025211995@bupt.cn</p>
+        <p>用户反馈：点击提交你的建议</p>
+        <p>商务合作：sumikko@bupt.edu.cn</p>
+        <p>办公地址：北京市海淀区西土城路10号北京邮电大学</p>
+        <p>联系电话：18671211003</p>
+      </section>
     </el-main>
   </el-container>
 </template>
