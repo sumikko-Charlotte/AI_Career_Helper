@@ -30,24 +30,16 @@
 
       <h2 style="font-size: 22px; color: #333; font-weight: 600; margin: 30px 0 15px;">我们的团队</h2>
       <p style="line-height: 1.8; font-size: 16px; color: #666; margin: 10px 0; text-indent: 2em;">
-        我们是来自XX大学计算机学院、心理学院和商学院的12名本科生与研究生，团队核心成员曾获“互联网+”大学生创新创业大赛金奖、“挑战杯”全国银奖，并有腾讯、字节跳动、华为等头部企业实习经历。我们不仅是技术的开发者，更是产品的深度用户——因为我们自己，就是正在经历生涯探索的学生，更懂同龄人的职业困惑与需求。
+        我们是来自北京外国语大学、北京邮电大学、北京科技大学、中央财经大学的9名本科生，经分工协作开发出「职航——AI辅助的大学生生涯成长平台」。我们不仅是技术的开发者，更是产品的深度用户——因为我们自己就是正在生涯探索的学生，更懂同龄人的职业困惑与需求。
       </p>
-
-      <h2 style="font-size: 22px; color: #333; font-weight: 600; margin: 30px 0 15px;">发展历程</h2>
-      <ul style="line-height: 1.8; font-size: 16px; color: #666; margin: 10px 0 10px 20px; list-style: square;">
-        <li>2025年3月：项目启动，完成对全国1000+名本硕学生的生涯发展痛点调研，梳理核心需求23项。</li>
-        <li>2025年5月：核心功能开发完成，邀请50名种子用户内部测试，收集有效反馈86条并完成首轮功能迭代。</li>
-        <li>2025年7月：平台正式上线，面向本校学生开放试用，首月注册用户突破1000人，功能满意度达92%。</li>
-        <li>2025年9月：与XX大学就业指导中心达成官方合作，成为该校生涯规划课程指定实践工具。</li>
-        <li>2025年11月：平台用户量突破5000人，收到全国20+所高校的合作邀请，启动跨校推广计划。</li>
-      </ul>
 
       <h2 style="font-size: 22px; color: #333; font-weight: 600; margin: 30px 0 15px;">联系我们</h2>
       <p style="line-height: 1.8; font-size: 16px; color: #666; margin: 10px 0;">
-        官方邮箱：support@zhihang-tech.com<br>
+        官方邮箱：2025211995@bupt.cn<br>
         用户反馈：<el-link type="primary" href="javascript:;">点击提交你的建议</el-link><br>
-        商务合作：bd@zhihang-tech.com<br>
-        办公地址：XX大学科技园A座208室
+        商务合作：sumikko@bupt.edu.cn<br>
+        办公地址：XX大学科技园A座208室<br>
+        联系电话：18671211003
       </p>
     </el-main>
   </el-container>

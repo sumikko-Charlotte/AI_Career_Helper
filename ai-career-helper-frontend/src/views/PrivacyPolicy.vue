@@ -83,9 +83,9 @@
       <h2 style="font-size: 22px; color: #333; font-weight: 600; margin: 30px 0 15px;">九、联系方式</h2>
       <p style="line-height: 1.8; font-size: 16px; color: #666; margin: 10px 0;">
         若您对本隐私政策有任何疑问、意见或建议，或需要行使个人信息相关权利，可通过以下方式与我们联系，我们将在7个工作日内回复您的诉求：<br>
-        隐私专属邮箱：privacy@zhihang-tech.com<br>
-        客服热线：400-888-9999（工作日 9:00-18:00，法定节假日除外）<br>
-        邮寄地址：XX市XX区XX大学科技园A座208室 「职航」隐私合规部（收）
+        官方邮箱：2025211995@bupt.cn<br>
+        商务合作：sumikko@bupt.edu.cn<br>
+        联系电话：18671211003
       </p>
     </el-main>
   </el-container>
