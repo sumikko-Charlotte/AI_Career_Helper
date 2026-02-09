@@ -88,8 +88,8 @@ const handleLogin = async () => {
   loading.value = true
   try {
     console.log('🚀 Sending login request')
-    // 使用统一的 request 实例，自动包含 baseURL 和请求头
-    const response = await axios.post('https://1401892234-iz2wac2chq.ap-beijing.tencentscf.com/login', {
+    // 使用统一的 request 实例，自动包含 baseURL 和请求头，走后端 /api/login 接口
+    const response = await request.post('/api/login', {
       username: loginForm.value.username,
       password: loginForm.value.password
     })
@@ -111,10 +111,16 @@ const handleLogin = async () => {
 
       // 同步到真实用户服务（用于持久化 CSV）
       try {
-        const syncResp = await axios.post('https://1401892234-iz2wac2chq.ap-beijing.tencentscf.com/login', { username: loginForm.value.username, password: loginForm.value.password })
+        const syncResp = await axios.post(`${SERVER_API}/api/login`, {
+          username: loginForm.value.username,
+          password: loginForm.value.password
+        })
         if (!(syncResp.data && syncResp.data.code === 200)) {
           // 如果该用户在真实 CSV 中不存在，则尝试注册一次以保证持久化
-          await axios.post(`${SERVER_API}/api/register`, { username: loginForm.value.username, password: loginForm.value.password })
+          await axios.post(`${SERVER_API}/api/register`, {
+            username: loginForm.value.username,
+            password: loginForm.value.password
+          })
         }
       } catch (e) { console.warn('同步登录到用户服务失败', e) }
 
