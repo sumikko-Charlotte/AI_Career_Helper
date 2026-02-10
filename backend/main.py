@@ -3,16 +3,33 @@ import random
 import csv
 import os
 import datetime
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import json
-from typing import List
+from typing import List, Optional
 import shutil # 👈 新增
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from openai import OpenAI
+import io
+import traceback
+
+# 文件解析库（按需导入，避免依赖问题）
+try:
+    import PyPDF2
+    PDF_SUPPORT = True
+except ImportError:
+    PDF_SUPPORT = False
+    print("⚠️ PyPDF2 未安装，PDF 文件解析功能将不可用")
+
+try:
+    from docx import Document
+    DOCX_SUPPORT = True
+except ImportError:
+    DOCX_SUPPORT = False
+    print("⚠️ python-docx 未安装，DOCX 文件解析功能将不可用")
 
 # ==========================================
 # 导入数据库配置和操作函数
@@ -103,6 +120,49 @@ def _deepseek_json(system_prompt: str, user_prompt: str) -> dict:
         return json.loads(content)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DeepSeek(JSON) 调用失败: {e}")
+
+# ==========================================
+#  简历文件解析函数
+# ==========================================
+def extract_text_from_file(file: UploadFile) -> str:
+    """
+    从上传的文件中提取文本内容
+    支持格式：PDF、DOCX、TXT
+    """
+    file_extension = os.path.splitext(file.filename or "")[1].lower()
+    content = file.file.read()
+    file.file.seek(0)  # 重置文件指针
+    
+    try:
+        if file_extension == ".pdf":
+            if not PDF_SUPPORT:
+                raise ValueError("PDF 解析功能不可用，请安装 PyPDF2: pip install PyPDF2")
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+            print(f"✅ [extract_text_from_file] PDF 文件解析成功，提取 {len(text)} 字符")
+            return text.strip()
+        
+        elif file_extension == ".docx":
+            if not DOCX_SUPPORT:
+                raise ValueError("DOCX 解析功能不可用，请安装 python-docx: pip install python-docx")
+            doc = Document(io.BytesIO(content))
+            text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+            print(f"✅ [extract_text_from_file] DOCX 文件解析成功，提取 {len(text)} 字符")
+            return text.strip()
+        
+        elif file_extension == ".txt":
+            text = content.decode("utf-8", errors="ignore")
+            print(f"✅ [extract_text_from_file] TXT 文件解析成功，提取 {len(text)} 字符")
+            return text.strip()
+        
+        else:
+            raise ValueError(f"不支持的文件格式: {file_extension}，仅支持 .pdf, .docx, .txt")
+    
+    except Exception as e:
+        print(f"❌ [extract_text_from_file] 文件解析失败: {e}")
+        raise HTTPException(status_code=400, detail=f"文件解析失败: {str(e)}")
 
 # ==========================================
 #  模型定义 (整合了所有功能的数据结构)
@@ -1361,6 +1421,185 @@ def generate_job_test(req: GenerateJobTestRequest):
         print(f"❌ [generate-job-test] 生成失败: {e}")
         print(f"❌ [generate-job-test] 错误堆栈: {traceback.format_exc()}")
         return JSONResponse(status_code=500, content={"code": 500, "msg": "AI生成失败，请稍后重试"})
+
+
+@app.post("/api/analyze_resume")
+async def analyze_resume(
+    resume_file: Optional[UploadFile] = File(None),
+    resume_text: Optional[str] = Form(None)
+):
+    """
+    简历诊断与优化接口
+    
+    支持两种输入方式：
+    1. 文件上传：resume_file（支持 PDF/DOCX/TXT）
+    2. 文本输入：resume_text（直接传入简历文本）
+    
+    返回格式：
+    {
+      "success": true,
+      "diagnosis_report": {
+        "score": 85,
+        "summary": "AI生成的综合评价",
+        "score_details": ["评分依据1", "评分依据2"],
+        "highlights": ["亮点1", "亮点2"],
+        "weaknesses": ["不足1", "不足2"]
+      },
+      "optimized_resume": "AI生成的Markdown格式优化简历",
+      "fallback": false
+    }
+    """
+    import traceback
+    
+    print(f"✅ [analyze_resume] 收到简历分析请求")
+    resume_file_name = resume_file.filename if resume_file and hasattr(resume_file, 'filename') else None
+    print(f"✅ [analyze_resume] 参数: resume_file={resume_file_name}, resume_text={'已提供' if resume_text else None}")
+    
+    # 1. 提取简历文本内容
+    resume_content = ""
+    try:
+        if resume_file:
+            print(f"🔄 [analyze_resume] 开始解析文件: {resume_file.filename}")
+            resume_content = extract_text_from_file(resume_file)
+        elif resume_text:
+            print(f"🔄 [analyze_resume] 使用文本输入，长度: {len(resume_text)} 字符")
+            resume_content = resume_text.strip()
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "请提供简历文件（resume_file）或简历文本（resume_text）"}
+            )
+        
+        if not resume_content:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "简历内容为空，请检查文件或文本内容"}
+            )
+        
+        print(f"✅ [analyze_resume] 简历内容提取成功，长度: {len(resume_content)} 字符")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ [analyze_resume] 文件解析异常: {e}")
+        print(f"❌ [analyze_resume] 错误堆栈: {traceback.format_exc()}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": f"文件解析失败: {str(e)}"}
+        )
+    
+    # 2. 调用 DeepSeek 生成诊断报告和优化简历
+    fallback_used = False
+    diagnosis_report = None
+    optimized_resume = None
+    
+    try:
+        print(f"🔄 [analyze_resume] 开始调用 DeepSeek API 生成诊断报告")
+        
+        # 2.1 生成诊断报告
+        diagnosis_system_prompt = (
+            "你是资深简历优化专家，分析以下简历内容，严格按以下JSON结构输出诊断报告，不要任何多余话术：\n"
+            "{\n"
+            '  "score": 数字（0-100）,\n'
+            '  "summary": "综合评价一句话",\n'
+            '  "score_details": ["评分依据1", "评分依据2"],\n'
+            '  "highlights": ["亮点1", "亮点2"],\n'
+            '  "weaknesses": ["不足1", "不足2"]\n'
+            "}"
+        )
+        diagnosis_user_prompt = f"简历内容：\n{resume_content}"
+        
+        diagnosis_data = _deepseek_json(diagnosis_system_prompt, diagnosis_user_prompt)
+        
+        # 归一化诊断报告结构
+        diagnosis_report = {
+            "score": int(diagnosis_data.get("score", 0)) if isinstance(diagnosis_data.get("score"), (int, float)) else 0,
+            "summary": diagnosis_data.get("summary", "AI 暂未生成综合评价"),
+            "score_details": diagnosis_data.get("score_details", []) if isinstance(diagnosis_data.get("score_details"), list) else [],
+            "highlights": diagnosis_data.get("highlights", []) if isinstance(diagnosis_data.get("highlights"), list) else [],
+            "weaknesses": diagnosis_data.get("weaknesses", []) if isinstance(diagnosis_data.get("weaknesses"), list) else [],
+        }
+        
+        print(f"✅ [analyze_resume] 诊断报告生成成功，评分: {diagnosis_report['score']}")
+        
+        # 2.2 生成优化简历
+        print(f"🔄 [analyze_resume] 开始调用 DeepSeek API 生成优化简历")
+        
+        optimize_system_prompt = (
+            "基于以下简历内容，优化为更专业的版本，严格按以下Markdown结构输出，不要任何多余话术：\n"
+            "# 你的姓名 (意向岗位: 全栈开发工程师)\n"
+            "电话: 138-xxxx-xxxx | 邮箱: email@example.com\n\n"
+            "## 💡 AI优化摘要\n"
+            "优化重点: ...\n\n"
+            "## 🎓 教育背景\n"
+            "北京邮电大学 | 人工智能学院 | 本科 | 2024-2028\n"
+            "- 主修课程: ...\n"
+            "- 核心优势: ...\n\n"
+            "## 💻 项目经历 (精修版)\n"
+            "### AI简历全科医生平台 | 全栈负责人 | FastAPI, Vue3, Docker, Redis\n"
+            "- **背景(S)**: ...\n"
+            "- **任务(T)**: ...\n"
+            "- **行动(A)**: ...\n"
+            "- **结果(R)**: ...\n\n"
+            "## 🛠️ 技能清单\n"
+            "- 核心技术: ...\n"
+            "- 工具: ...\n\n"
+            "## 📄 自我评价\n"
+            "- ..."
+        )
+        optimize_user_prompt = f"简历内容：\n{resume_content}"
+        
+        optimized_resume = _deepseek_markdown(optimize_system_prompt, optimize_user_prompt)
+        
+        print(f"✅ [analyze_resume] 优化简历生成成功，长度: {len(optimized_resume)} 字符")
+    
+    except Exception as e:
+        print(f"❌ [analyze_resume] DeepSeek API 调用失败: {e}")
+        print(f"❌ [analyze_resume] 错误堆栈: {traceback.format_exc()}")
+        
+        # 降级逻辑：返回预设的诊断报告和优化简历
+        fallback_used = True
+        print(f"⚠️ [analyze_resume] 启用降级逻辑，返回预设内容")
+        
+        diagnosis_report = {
+            "score": 82,
+            "summary": "简历结构清晰，技术栈覆盖全面，但「量化成果」有待提升。",
+            "score_details": [
+                "✅ 基础分70。因项目使用了STAR法则+5分，技术栈匹配+10分；❌ 但缺少GitHub链接-3分。"
+            ],
+            "highlights": [
+                "教育背景优秀",
+                "两段相关实习",
+                "技术栈命中率高"
+            ],
+            "weaknesses": [
+                "缺乏具体性能数据",
+                "自我评价泛泛",
+                "无开源贡献"
+            ]
+        }
+        
+        optimized_resume = (
+            "# 优化简历（降级模式）\n\n"
+            "## 💡 AI优化摘要\n"
+            "优化重点: 基于原始简历内容进行结构化优化，突出技术能力和项目成果。\n\n"
+            "## 🎓 教育背景\n"
+            "（请根据实际简历内容填写）\n\n"
+            "## 💻 项目经历 (精修版)\n"
+            "（请使用STAR法则重构项目描述）\n\n"
+            "## 🛠️ 技能清单\n"
+            "（请列出核心技术栈和工具）\n\n"
+            "## 📄 自我评价\n"
+            "（请补充具体的能力描述和职业目标）\n"
+        )
+    
+    # 3. 返回结果
+    return {
+        "success": True,
+        "diagnosis_report": diagnosis_report,
+        "optimized_resume": optimized_resume,
+        "fallback": fallback_used
+    }
 
 
 @app.post("/api/analyze-experiment")
