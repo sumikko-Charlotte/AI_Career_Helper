@@ -172,6 +172,15 @@ class VirtualCareerQuestionsRequest(BaseModel):
 class GenerateInterviewReportRequest(BaseModel):
     chat_history: list  # 完整的对话历史记录
     target_role: str = ""  # 目标岗位
+
+class AnalyzeCompetitivenessRequest(BaseModel):
+    """竞争力分析请求体"""
+    gpa: str  # GPA（可以是数字或文字描述）
+    project_experience: str  # 项目实战经验
+    internship: str  # 名企实习经历
+    competition: str  # 竞赛获奖情况
+    english_academic: str  # 英语学术能力
+    leadership: str  # 领导力与协作
     meta: dict | None = None  # 前端已提取的元信息：身份/方向/时长/生成时间
 
 # ==========================================
@@ -1213,6 +1222,211 @@ def analyze_experiment(req: AnalyzeExperimentRequest):
 
     markdown = _deepseek_markdown(system_prompt, user_prompt)
     return {"success": True, "markdown": markdown}
+
+
+def _quantize_score(value: str, dimension_name: str) -> int:
+    """
+    将用户输入转换为 0-100 的分数
+    
+    参数:
+        value: 用户输入（可能是数字字符串或文字描述）
+        dimension_name: 维度名称（用于 AI 量化时的上下文）
+    
+    返回:
+        0-100 的整数分数
+    """
+    value = str(value).strip()
+    
+    # 尝试直接解析为数字
+    try:
+        num = float(value)
+        # 如果是 0-4 范围，转换为 0-100（假设 4 分制）
+        if 0 <= num <= 4:
+            return int((num / 4) * 100)
+        # 如果是 0-100 范围，直接返回
+        elif 0 <= num <= 100:
+            return int(num)
+        # 超出范围，限制在 0-100
+        else:
+            return max(0, min(100, int(num)))
+    except ValueError:
+        # 不是纯数字，需要调用 AI 量化
+        pass
+    
+    # 调用 DeepSeek API 进行文字量化
+    try:
+        system_prompt = (
+            "你是一位专业的竞争力评估专家。\n"
+            "请根据用户提供的文字描述，将其量化为 0-100 的分数。\n"
+            "评分标准：\n"
+            "- 0-20：较差/无\n"
+            "- 21-40：一般/较少\n"
+            "- 41-60：中等/有一些\n"
+            "- 61-80：良好/较多\n"
+            "- 81-100：优秀/很多\n"
+            "必须严格按照以下 JSON 格式返回，不要任何多余话术：\n"
+            "{\n"
+            '  "score": 数字（0-100）\n'
+            "}"
+        )
+        
+        user_prompt = (
+            f"维度：{dimension_name}\n"
+            f"用户输入：{value}\n\n"
+            "请根据上述描述，给出 0-100 的量化分数。"
+        )
+        
+        result = _deepseek_json(system_prompt, user_prompt)
+        score = result.get("score", 50)  # 默认 50 分
+        
+        # 确保分数在 0-100 范围内
+        score = max(0, min(100, int(score)))
+        print(f"✅ [quantize_score] {dimension_name}: '{value}' → {score} 分")
+        return score
+    
+    except Exception as e:
+        print(f"❌ [quantize_score] AI 量化失败 ({dimension_name}: '{value}'): {e}")
+        # AI 量化失败，返回默认分数 50
+        return 50
+
+
+@app.post("/api/analyze_competitiveness")
+def analyze_competitiveness(req: AnalyzeCompetitivenessRequest):
+    """
+    竞争力分析接口
+    
+    接收 6 个维度的用户输入（可以是数字或文字），进行量化后生成 AI 分析报告
+    
+    返回格式：
+    {
+      "success": true,
+      "quantized_scores": {
+        "gpa": 85,
+        "project_experience": 70,
+        "internship": 60,
+        "competition": 75,
+        "english_academic": 80,
+        "leadership": 65
+      },
+      "analysis_report": "AI生成的Markdown格式分析报告",
+      "fallback": false
+    }
+    """
+    import traceback
+    
+    print(f"✅ [analyze_competitiveness] 收到竞争力分析请求")
+    
+    try:
+        # 1. 量化所有维度分数
+        print(f"🔄 [analyze_competitiveness] 开始量化各维度分数")
+        
+        quantized_scores = {
+            "gpa": _quantize_score(req.gpa, "GPA"),
+            "project_experience": _quantize_score(req.project_experience, "项目实战经验"),
+            "internship": _quantize_score(req.internship, "名企实习经历"),
+            "competition": _quantize_score(req.competition, "竞赛获奖情况"),
+            "english_academic": _quantize_score(req.english_academic, "英语学术能力"),
+            "leadership": _quantize_score(req.leadership, "领导力与协作"),
+        }
+        
+        print(f"✅ [analyze_competitiveness] 量化完成: {quantized_scores}")
+        
+        # 2. 生成 AI 分析报告
+        print(f"🔄 [analyze_competitiveness] 开始生成 AI 分析报告")
+        
+        system_prompt = (
+            "你是一位专业的职业竞争力评估专家和生涯规划顾问。\n"
+            "请根据用户提供的 6 个维度量化分数，生成一份个性化的竞争力分析报告。\n"
+            "报告必须严格按照以下 Markdown 结构输出，不要任何多余话术：\n"
+            "\n"
+            "## 📊 竞争力总览\n"
+            "（总体评分和一句话总结）\n"
+            "\n"
+            "## 📈 各维度详细分析\n"
+            "### 1. GPA 学术成绩\n"
+            "（分数：XX/100，评价和建议）\n"
+            "\n"
+            "### 2. 项目实战经验\n"
+            "（分数：XX/100，评价和建议）\n"
+            "\n"
+            "### 3. 名企实习经历\n"
+            "（分数：XX/100，评价和建议）\n"
+            "\n"
+            "### 4. 竞赛获奖情况\n"
+            "（分数：XX/100，评价和建议）\n"
+            "\n"
+            "### 5. 英语学术能力\n"
+            "（分数：XX/100，评价和建议）\n"
+            "\n"
+            "### 6. 领导力与协作\n"
+            "（分数：XX/100，评价和建议）\n"
+            "\n"
+            "## 🎯 核心竞争力\n"
+            "（列出 2-3 个最强维度）\n"
+            "\n"
+            "## ⚠️ 待提升领域\n"
+            "（列出 2-3 个需要重点提升的维度）\n"
+            "\n"
+            "## 💡 个性化提升建议\n"
+            "（针对待提升领域，给出 3-5 条具体可执行的建议）\n"
+        )
+        
+        user_prompt = (
+            "以下是用户在 6 个维度的量化分数：\n"
+            f"- GPA 学术成绩：{quantized_scores['gpa']}/100\n"
+            f"- 项目实战经验：{quantized_scores['project_experience']}/100\n"
+            f"- 名企实习经历：{quantized_scores['internship']}/100\n"
+            f"- 竞赛获奖情况：{quantized_scores['competition']}/100\n"
+            f"- 英语学术能力：{quantized_scores['english_academic']}/100\n"
+            f"- 领导力与协作：{quantized_scores['leadership']}/100\n\n"
+            "请基于以上分数，生成一份详细的竞争力分析报告。"
+        )
+        
+        analysis_report = _deepseek_markdown(system_prompt, user_prompt)
+        
+        print(f"✅ [analyze_competitiveness] AI 分析报告生成成功，长度: {len(analysis_report)} 字符")
+        
+        return {
+            "success": True,
+            "quantized_scores": quantized_scores,
+            "analysis_report": analysis_report,
+            "fallback": False
+        }
+    
+    except Exception as e:
+        print(f"❌ [analyze_competitiveness] 生成失败: {e}")
+        print(f"❌ [analyze_competitiveness] 错误堆栈: {traceback.format_exc()}")
+        
+        # 降级逻辑：返回基础分析
+        quantized_scores_fallback = {
+            "gpa": _quantize_score(req.gpa, "GPA") if hasattr(req, 'gpa') else 0,
+            "project_experience": _quantize_score(req.project_experience, "项目实战经验") if hasattr(req, 'project_experience') else 0,
+            "internship": _quantize_score(req.internship, "名企实习经历") if hasattr(req, 'internship') else 0,
+            "competition": _quantize_score(req.competition, "竞赛获奖情况") if hasattr(req, 'competition') else 0,
+            "english_academic": _quantize_score(req.english_academic, "英语学术能力") if hasattr(req, 'english_academic') else 0,
+            "leadership": _quantize_score(req.leadership, "领导力与协作") if hasattr(req, 'leadership') else 0,
+        }
+        
+        fallback_report = (
+            "## 📊 竞争力总览\n\n"
+            "基于您提供的 6 个维度数据，系统已进行初步分析。\n\n"
+            "## 📈 各维度分数\n\n"
+            f"- GPA 学术成绩：{quantized_scores_fallback['gpa']}/100\n"
+            f"- 项目实战经验：{quantized_scores_fallback['project_experience']}/100\n"
+            f"- 名企实习经历：{quantized_scores_fallback['internship']}/100\n"
+            f"- 竞赛获奖情况：{quantized_scores_fallback['competition']}/100\n"
+            f"- 英语学术能力：{quantized_scores_fallback['english_academic']}/100\n"
+            f"- 领导力与协作：{quantized_scores_fallback['leadership']}/100\n\n"
+            "## 💡 建议\n\n"
+            "建议重点关注分数较低的维度，制定针对性的提升计划。"
+        )
+        
+        return {
+            "success": True,
+            "quantized_scores": quantized_scores_fallback,
+            "analysis_report": fallback_report,
+            "fallback": True
+        }
 
 
 @app.post("/api/generate-career")
