@@ -1160,9 +1160,13 @@ def generate_job_test(req: GenerateJobTestRequest):
     异常格式：
     - 职业名为空：{code: 400, msg: "请输入职业名"}
     - AI 生成失败：{code: 500, msg: "AI生成失败，请稍后重试"}
+    
+    注意：此接口仅支持 POST 请求方法
     """
+    print(f"✅ [generate-job-test] 收到请求: jobName={req.jobName}")
     job_name = (req.jobName or "").strip()
     if not job_name:
+        print(f"❌ [generate-job-test] 职业名为空")
         return JSONResponse(status_code=400, content={"code": 400, "msg": "请输入职业名"})
 
     try:
@@ -1283,14 +1287,18 @@ def generate_job_test(req: GenerateJobTestRequest):
             raise ValueError("AI 生成的题目结构异常")
 
         # 返回格式与原有接口对齐：使用 jobScript 字段名（与原有 script 字段对应）
-        return {
+        result = {
             "jobScript": script_text,
             "questions": normalized_questions,
         }
+        print(f"✅ [generate-job-test] 成功生成 {len(normalized_questions)} 道题目")
+        return result
 
     except Exception as e:
         # 统一转为前端友好的错误结构
+        import traceback
         print(f"❌ [generate-job-test] 生成失败: {e}")
+        print(f"❌ [generate-job-test] 错误堆栈: {traceback.format_exc()}")
         return JSONResponse(status_code=500, content={"code": 500, "msg": "AI生成失败，请稍后重试"})
 
 @app.post("/api/analyze-experiment")
