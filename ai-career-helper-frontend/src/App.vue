@@ -2449,13 +2449,15 @@ onBeforeUnmount(() => {
     <!-- 组合框：既可输入任意方向，也可从下拉选中 -->
     <el-select 
       v-model="roadmapRole" 
-      placeholder="目标方向" 
+      placeholder="目标方向（可输入或选择）" 
       size="large" 
       class="select-item"
       effect="light"
       filterable
       allow-create
       default-first-option
+      reserve-keyword
+      clearable
     >
       <template #prefix><el-icon><Aim /></el-icon></template>
       <el-option-group
