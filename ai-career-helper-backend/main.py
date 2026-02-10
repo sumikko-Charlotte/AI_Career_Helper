@@ -9,9 +9,9 @@ from pydantic import BaseModel
 import uvicorn
 import json
 from typing import List
-import shutil # 👈 新增
+import shutil  # 👈 新增
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from openai import OpenAI
 
 # ==========================================
@@ -150,6 +150,11 @@ class GenerateCareerRequest(BaseModel):
 
 class VirtualCareerQuestionsRequest(BaseModel):
     career: str
+
+
+class GenerateJobTestRequest(BaseModel):
+    """生成职业虚拟体验 + 15 道测试题的请求体"""
+    jobName: str
 
 class GenerateInterviewReportRequest(BaseModel):
     chat_history: list  # 完整的对话历史记录
@@ -1128,6 +1133,116 @@ def virtual_career_questions(req: VirtualCareerQuestionsRequest):
         "career": data.get("career", req.career),
         "questions": questions[:15],
     }
+
+
+@app.post("/api/generate-job-test")
+def generate_job_test(req: GenerateJobTestRequest):
+    """
+    根据用户输入的职业名称：
+    1. 调用 DeepSeek 生成该职业的虚拟体验脚本（包含职业定义、典型场景、3~5 个互动选择及结果）
+    2. 再调用 DeepSeek 生成 15 道职业相关测试题（单选/多选混合）
+
+    返回格式：
+    {
+      "script": "职业体验脚本内容...",
+      "testQuestions": [ {question, options, answer, analysis}, ... 共 15 题 ]
+    }
+
+    异常格式：
+    - 职业名为空：{code: 400, msg: "请输入职业名"}
+    - AI 生成失败：{code: 500, msg: "AI生成失败，请稍后重试"}
+    """
+    job_name = (req.jobName or "").strip()
+    if not job_name:
+        return JSONResponse(status_code=400, content={"code": 400, "msg": "请输入职业名"})
+
+    try:
+        # 第一步：生成职业体验脚本（文本即可，可包含 Markdown）
+        script_system_prompt = (
+            "你是一名职业体验设计师，负责为用户设计沉浸式“虚拟职业体验”脚本。\n"
+            "目标：针对指定职业，生成一段完整的体验脚本，帮助用户在几分钟内沉浸式感受该职业的真实工作场景。\n"
+            "必须包含以下内容（使用清晰的小标题或分段）：\n"
+            "1. 职业定义与核心职责概述（1~2 段）\n"
+            "2. 典型的一天/一周工作场景（2~3 段，可以具体到时间点和任务）\n"
+            "3. 设计 3~5 个关键抉择节点，每个节点：\n"
+            "   - 先用 2~3 句话描述当前情境\n"
+            "   - 给出 3 个左右可选操作（用 A/B/C 编号）\n"
+            "   - 对每个选项给出简短的结果反馈（包括积极或消极影响）\n"
+            "4. 最后的总结与建议（根据用户在体验中的倾向，给出 3~5 条建议）\n"
+            "要求：\n"
+            "- 使用通俗易懂的中文，语气亲切、有画面感\n"
+            "- 可以使用 Markdown 标题/列表增强可读性，但不要输出任何 JSON 结构\n"
+        )
+        script_user_prompt = (
+            f"目标职业名称：{job_name}\n\n"
+            "请基于你对该职业的理解，按照上述结构输出完整的职业体验脚本。"
+        )
+        script_text = _deepseek_markdown(script_system_prompt, script_user_prompt)
+
+        # 第二步：生成 15 道职业测试题（JSON）
+        questions_system_prompt = (
+            "你是一名职业测评与招聘测评专家，负责针对某一具体职业出题。\n"
+            "请为指定职业设计 15 道用于评估职业匹配度的题目，题型为单选/多选混合：\n"
+            "- 题目内容需覆盖：职业核心技能、岗位职责、行业常识、工作方式偏好、压力承受、沟通协作等维度；\n"
+            "- 选项要贴近真实职场情境，不要太抽象。\n"
+            "返回时必须严格使用以下 JSON 结构（不允许出现其它字段）：\n"
+            "{\n"
+            "  \"testQuestions\": [\n"
+            "    {\n"
+            "      \"question\": \"题目内容\",\n"
+            "      \"options\": [\"选项A\", \"选项B\", \"选项C\", \"选项D\"],\n"
+            "      \"answer\": \"正确答案（如：A 或 ACD）\",\n"
+            "      \"analysis\": \"解析说明，解释为什么这是正确答案，和职业有什么关系\"\n"
+            "    }\n"
+            "    // 共 15 题\n"
+            "  ]\n"
+            "}\n"
+        )
+        questions_user_prompt = (
+            f"目标职业名称：{job_name}\n\n"
+            "请按照上述 JSON 结构返回 15 道题目。"
+        )
+
+        questions_data = _deepseek_json(questions_system_prompt, questions_user_prompt)
+        raw_questions = questions_data.get("testQuestions") or questions_data.get("questions") or []
+
+        # 基本校验与归一化
+        if not isinstance(raw_questions, list) or len(raw_questions) == 0:
+            raise ValueError("AI 未生成有效题目")
+
+        normalized_questions = []
+        for idx, q in enumerate(raw_questions[:15], start=1):
+            if not isinstance(q, dict):
+                continue
+            question_text = q.get("question") or q.get("title") or q.get("stem") or f"第 {idx} 题"
+            options = q.get("options") or []
+            answer = q.get("answer") or ""
+            analysis = q.get("analysis") or q.get("explanation") or ""
+
+            # 确保选项为字符串列表
+            options = [str(o) for o in options]
+
+            normalized_questions.append(
+                {
+                    "question": question_text,
+                    "options": options,
+                    "answer": str(answer),
+                    "analysis": analysis,
+                }
+            )
+
+        if not normalized_questions:
+            raise ValueError("AI 生成的题目结构异常")
+
+        return {
+            "script": script_text,
+            "testQuestions": normalized_questions,
+        }
+
+    except Exception as e:
+        # 统一转为前端友好的错误结构
+        print(f"❌ [generate-job-test] 生成失败: {e}")
+        return JSONResponse(status_code=500, content={"code": 500, "msg": "AI生成失败，请稍后重试"})
 
 @app.post("/api/analyze-experiment")
 def analyze_experiment(req: AnalyzeExperimentRequest):
