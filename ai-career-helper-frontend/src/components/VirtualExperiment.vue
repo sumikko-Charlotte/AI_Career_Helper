@@ -8,7 +8,7 @@ import MarkdownIt from 'markdown-it'
 // Use Vite env variable to configure backend base URL to avoid hard-coding ports.
 // 部署时通过 Vercel 环境变量 VITE_API_BASE 设置，格式：https://your-backend.onrender.com
 // Changes made: switched to `VITE_API_BASE`, added debug logs, improved error handling for requests. (Modified: 2026-01-30)
-const API_BASE = import.meta.env.VITE_API_BASE || '{{RENDER_BACKEND_URL}}'
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 const md = new MarkdownIt()
 
 // Debug helper: expose resolved API endpoint in console

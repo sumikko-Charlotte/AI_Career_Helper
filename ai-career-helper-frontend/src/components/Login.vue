@@ -8,7 +8,7 @@ const router = useRouter()
 const route = useRoute()
 const emit = defineEmits(['login-success'])
 // 用户持久化服务 API（如果需要独立服务，部署时通过 Vercel 环境变量 VITE_USER_SERVER 设置）
-const SERVER_API = import.meta.env.VITE_USER_SERVER || '{{RENDER_BACKEND_URL}}' // 默认使用后端 API
+const SERVER_API = import.meta.env.VITE_USER_SERVER || API_BASE // 默认使用后端 API
 console.debug('[Login] API_BASE ->', API_BASE, 'SERVER_API ->', SERVER_API)
 
 // 响应式数据
