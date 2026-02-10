@@ -59,7 +59,21 @@ const roleOptions = [
   '产品经理 (PM)',
   'UI/UX 设计师',
   '系统管理',
-  '其他'
+  '其他',
+  // 新增的扩展岗位选项
+  '教师/教育类（中小学、高校、教育机构）',
+  '汉语言/文案/新媒体编辑',
+  '记者/传媒/播音主持',
+  '律师/法务/合规',
+  '会计/财务/审计',
+  '人力资源/HR/行政',
+  '市场营销/品牌/公关',
+  '视觉/平面/UI/UX设计',
+  '心理学/心理咨询',
+  '翻译/外语类',
+  '公共管理/公务员/事业单位',
+  '医护类（医生、护士、药师）',
+  '金融类（银行、证券、保险）'
 ]
 
 const toggleMode = () => {
@@ -284,12 +298,18 @@ const handleSubmit = () => {
 
             <div class="form-group" style="margin-top: 20px;">
             <label class="form-label">意向岗位</label>
-            <select v-model="registerForm.target_role" class="form-select" required>
-                <option value="">请选择意向岗位</option>
+            <!-- 组合框：既可输入自定义岗位，也可从下拉建议中选择 -->
+            <input
+                v-model="registerForm.target_role"
+                list="roleOptionsList"
+                class="form-input"
+                placeholder="请选择或输入意向岗位"
+                required
+            >
+            <datalist id="roleOptionsList">
                 <option v-for="role in roleOptions" :key="role" :value="role">
-                {{ role }}
                 </option>
-            </select>
+            </datalist>
             </div>
         </div>
 

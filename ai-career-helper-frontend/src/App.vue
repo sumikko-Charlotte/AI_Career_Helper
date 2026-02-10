@@ -184,7 +184,21 @@ const roleOptions = [
   { label: '服务业', options: ['餐饮', '休闲', '娱乐运动', '健身保健', '养生', '景区', '摄影', '美容', '美发', '宠物服务', '婚庆', '家政服务', '旅游', '酒店'] },
   { label: '汽车', options: ['新能源汽车', '汽车智能网联', '汽车经销商', '汽车后市场', '汽车研发', '制造汽车零件', '摩托车/自行车之制造', '4S店'] },
   { label: '能源/化工/环保', options: ['光伏', '储能', '电池', '风电', '新能源环保', '电力', '热力', '水利', '石油', '石化', '矿产', '地质采掘', '冶炼'] },
-  { label: '政府/非盈利机构/其他', options: ['公共事业', '农业', '林业', '牧业', '渔业', '政府'] }
+  { label: '政府/非盈利机构/其他', options: ['公共事业', '农业', '林业', '牧业', '渔业', '政府'] },
+  // 新增的综合方向标签（用于提示，实际仍然允许自由输入）
+  { label: '综合方向', options: [
+    '教育/培训/科研',
+    '法律/法务/合规',
+    '财务/会计/审计',
+    '人力资源/行政/办公',
+    '市场营销/品牌/公关',
+    '媒体/传媒/影视',
+    '医疗/健康/护理',
+    '金融/银行/证券/保险',
+    '公共管理/公务员/事业单位',
+    '设计/创意/艺术',
+    '心理学/咨询/社工'
+  ] }
 ]
 
 // 新增：职业测评跳转方法（适配script setup）
@@ -2432,6 +2446,7 @@ onBeforeUnmount(() => {
       <el-option v-for="g in gradeOptions" :key="g" :label="g" :value="g"/>
     </el-select>
 
+    <!-- 组合框：既可输入任意方向，也可从下拉选中 -->
     <el-select 
       v-model="roadmapRole" 
       placeholder="目标方向" 
@@ -2439,6 +2454,8 @@ onBeforeUnmount(() => {
       class="select-item"
       effect="light"
       filterable
+      allow-create
+      default-first-option
     >
       <template #prefix><el-icon><Aim /></el-icon></template>
       <el-option-group
