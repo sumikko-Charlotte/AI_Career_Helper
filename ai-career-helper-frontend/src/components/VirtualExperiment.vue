@@ -277,26 +277,32 @@ const startBySearch = async () => {
     const data = res?.data || {}
 
     // 后端约定的业务错误结构：{code, msg}
-    if (data.code && data.code !== 200 && !data.testQuestions) {
+    if (data.code && data.code !== 200 && !data.questions && !data.testQuestions) {
       throw new Error(data.msg || 'AI生成失败，请稍后重试')
     }
 
-    const rawQuestions = Array.isArray(data.testQuestions)
-      ? data.testQuestions
-      : []
+    // 新版后端已对齐原有接口格式：优先使用 data.questions
+    const rawQuestions = Array.isArray(data.questions)
+      ? data.questions
+      : Array.isArray(data.testQuestions)
+        ? data.testQuestions
+        : []
 
     if (!rawQuestions.length) {
       throw new Error('AI 暂未返回题目，请稍后重试')
     }
 
-    // 统一成现有 questions 结构：[{ id, title, options }]
+    // 统一成现有 questions 结构：[{ id, title, options }]；
+    // 若后端已经返回 id/title/options，则直接复用，避免重复包装
     const qs = rawQuestions.slice(0, 15).map((q, idx) => {
+      const baseId = q.id || `q${idx + 1}`
+      const title = q.title || q.question || q.stem || `第 ${idx + 1} 题`
       const options = Array.isArray(q.options)
         ? q.options.map(o => String(o))
         : []
       return {
-        id: `q${idx + 1}`,
-        title: q.question || q.title || q.stem || `第 ${idx + 1} 题`,
+        id: String(baseId),
+        title,
         options,
       }
     })
