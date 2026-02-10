@@ -184,7 +184,9 @@ const roleOptions = [
   { label: '服务业', options: ['餐饮', '休闲', '娱乐运动', '健身保健', '养生', '景区', '摄影', '美容', '美发', '宠物服务', '婚庆', '家政服务', '旅游', '酒店'] },
   { label: '汽车', options: ['新能源汽车', '汽车智能网联', '汽车经销商', '汽车后市场', '汽车研发', '制造汽车零件', '摩托车/自行车之制造', '4S店'] },
   { label: '能源/化工/环保', options: ['光伏', '储能', '电池', '风电', '新能源环保', '电力', '热力', '水利', '石油', '石化', '矿产', '地质采掘', '冶炼'] },
-  { label: '政府/非盈利机构/其他', options: ['公共事业', '农业', '林业', '牧业', '渔业', '政府'] }
+  { label: '政府/非盈利机构/其他', options: ['公共事业', '农业', '林业', '牧业', '渔业', '政府'] },
+  { label: '其他', options: ['其他'] },
+  { label: '系统管理', options: ['系统管理'] }
 ]
 
 // 新增：职业测评跳转方法（适配script setup）
@@ -2432,11 +2434,15 @@ onBeforeUnmount(() => {
 
     <el-select 
       v-model="roadmapRole" 
-      placeholder="目标方向" 
+      placeholder="目标方向（可输入或选择）" 
       size="large" 
       class="select-item"
       effect="light"
       filterable
+      allow-create
+      default-first-option
+      reserve-keyword
+      clearable
     >
       <template #prefix><el-icon><Aim /></el-icon></template>
       <el-option-group

@@ -112,6 +112,7 @@ const questions = ref([])
 const answers = ref({})
 const submitting = ref(false)
 const loadingCareer = ref('')
+const loadingCustomCareer = ref(false) // 新增：自定义职业生成中的 loading 状态
 const markdownRaw = ref('')
 // markdownProcessed: markdown with injected icons and small transforms for rendering
 const markdownProcessed = ref('')
@@ -281,6 +282,99 @@ const submitAnswers = async () => {
   }
 }
 
+// startBySearch: 顶部搜索/输入职业入口
+// - 第一步：先判断是否在示例职业列表中，是的话复用原有 loadQuestions 流程
+// - 第二步：不在示例列表，则调用 /api/generate-job-test 生成 15 题
+// - 注意：只改「题目获取」这一步，后续做题 / 分析 / 下载逻辑完全复用原有代码
+const startBySearch = async () => {
+  const kw = searchKeyword.value.trim()
+  if (!kw) {
+    return ElMessage.warning('请先输入一个想体验的职业，例如：律师、医生、产品经理等')
+  }
+
+  // 1) 先看是否属于示例职业：优先精确匹配，再做包含/被包含匹配
+  const lowerKw = kw.toLowerCase()
+  const exact = careers.value.find(c => c.name === kw)
+  const fuzzy =
+    exact ||
+    careers.value.find(
+      c =>
+        c.name.toLowerCase() === lowerKw ||
+        c.name.toLowerCase().includes(lowerKw) ||
+        lowerKw.includes(c.name.toLowerCase())
+    )
+
+  if (fuzzy) {
+    // 命中示例职业：完全走原有流程
+    await loadQuestions(fuzzy.name)
+    return
+  }
+
+  // 2) 非示例职业：调用后端 /api/generate-job-test 获取 AI 生成题目
+  console.debug('[VirtualExperiment] startBySearch -> custom career', kw)
+  loadingCustomCareer.value = true
+  currentCareer.value = kw
+  markdownRaw.value = ''
+  markdownProcessed.value = ''
+
+  try {
+    const url = `${API_BASE}/api/generate-job-test`
+    console.debug('[VirtualExperiment] POST', url, { jobName: kw })
+
+    const res = await axios.post(url, { jobName: kw })
+    const data = res?.data || {}
+
+    // 后端约定的业务错误结构：{code, msg}
+    if (data.code && data.code !== 200 && !data.questions && !data.testQuestions) {
+      throw new Error(data.msg || 'AI生成失败，请稍后重试')
+    }
+
+    // 新版后端已对齐原有接口格式：优先使用 data.questions
+    const rawQuestions = Array.isArray(data.questions)
+      ? data.questions
+      : Array.isArray(data.testQuestions)
+        ? data.testQuestions
+        : []
+
+    if (!rawQuestions.length) {
+      throw new Error('AI 暂未返回题目，请稍后重试')
+    }
+
+    // 统一成现有 questions 结构：[{ id, title, options }]
+    // 若后端已经返回 id/title/options，则直接复用，避免重复包装
+    const qs = rawQuestions.slice(0, 15).map((q, idx) => {
+      const baseId = q.id || `q${idx + 1}`
+      const title = q.title || q.question || q.stem || `第 ${idx + 1} 题`
+      const options = Array.isArray(q.options)
+        ? q.options.map(o => String(o))
+        : []
+      return {
+        id: String(baseId),
+        title,
+        options,
+      }
+    })
+
+    if (!qs.length) {
+      throw new Error('AI 生成的题目结构异常，请稍后重试')
+    }
+
+    questions.value = qs
+    answers.value = Object.fromEntries(qs.map(q => [q.id, '']))
+
+    ElMessage.success(`已为「${kw}」生成 AI 体验题目`)
+  } catch (e) {
+    console.warn('generate-job-test request failed:', e)
+    const msg =
+      e.response?.data?.msg ||
+      e.message ||
+      'AI生成失败，请稍后重试'
+    ElMessage.error(msg)
+  } finally {
+    loadingCustomCareer.value = false
+  }
+}
+
 const downloadMd = () => {
   if (!markdownRaw.value) return ElMessage.warning('暂无报告可下载')
   const filenameCareer = currentCareer.value || '职业体验'
@@ -309,11 +403,23 @@ const downloadMd = () => {
         </div>
         <el-input
           v-model="searchKeyword"
-          placeholder="搜索职业，如：产品经理 / 算法工程师 / 医生"
+          placeholder="搜索或输入职业，如：产品经理 / 算法工程师 / 律师"
           clearable
           class="career-search"
           :prefix-icon="Search"
-        />
+          @keyup.enter="startBySearch"
+        >
+          <template #append>
+            <el-button
+              type="primary"
+              size="small"
+              :loading="loadingCustomCareer"
+              @click="startBySearch"
+            >
+              {{ loadingCustomCareer ? '生成中...' : '开始体验' }}
+            </el-button>
+          </template>
+        </el-input>
       </div>
 
       <div class="career-grid">
