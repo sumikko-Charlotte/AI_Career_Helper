@@ -2048,59 +2048,199 @@ const aiQuantizeSandboxInputs = async () => {
   return { markdown, next }
 }
 
-// 点击「生成雷达图」：调用 AI 自动量化 -> 写回 radarValues -> 触发原有 watch/raf 渲染（雷达图视觉不变）
+// 点击「生成雷达图/分析报告」：调用新的 /api/analyze_competitiveness 接口
 const generateSandboxRadar = async () => {
+  // 输入验证：至少填写一个维度
+  const hasInput = sandboxForm.gpa || sandboxForm.project || sandboxForm.intern || 
+                   sandboxForm.competition || sandboxForm.english || sandboxForm.leader
+  if (!hasInput) {
+    return ElMessage.warning('请填写至少一个维度的参数')
+  }
+
+  sandboxReportLoading.value = true
   try {
-    const { next } = await aiQuantizeSandboxInputs()
-    radarValues.gpa = next.gpa
-    radarValues.project = next.project
-    radarValues.intern = next.intern
-    radarValues.competition = next.competition
-    radarValues.english = next.english
-    radarValues.leader = next.leader
-    ElMessage.success('雷达图已更新')
+    const baseUrl = API_BASE || 'https://ai-career-helper-backend-u1s0.onrender.com'
+    const res = await axios.post(`${baseUrl}/api/analyze_competitiveness`, {
+      gpa: sandboxForm.gpa || '',
+      project_experience: sandboxForm.project || '',
+      internship: sandboxForm.intern || '',
+      competition: sandboxForm.competition || '',
+      english_academic: sandboxForm.english || '',
+      leadership: sandboxForm.leader || ''
+    }, {
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      timeout: 30000 // 30秒超时
+    })
+
+    if (res.data && res.data.success) {
+      const { quantized_scores, analysis_report, fallback } = res.data
+
+      // 更新雷达图数据（映射后端字段到前端字段）
+      if (quantized_scores) {
+        radarValues.gpa = _clamp100(quantized_scores.gpa || 0)
+        radarValues.project = _clamp100(quantized_scores.project_experience || 0)
+        radarValues.intern = _clamp100(quantized_scores.internship || 0)
+        radarValues.competition = _clamp100(quantized_scores.competition || 0)
+        radarValues.english = _clamp100(quantized_scores.english_academic || 0)
+        radarValues.leader = _clamp100(quantized_scores.leadership || 0)
+      }
+
+      // 更新AI分析报告
+      if (analysis_report) {
+        sandboxReportMarkdown.value = analysis_report
+      }
+
+      if (fallback) {
+        ElMessage.warning('AI分析失败，使用默认报告')
+      } else {
+        ElMessage.success('雷达图和分析报告已更新')
+      }
+    } else {
+      throw new Error(res.data?.error || '接口返回格式错误')
+    }
   } catch (e) {
-    console.error(e)
-    // 不再提示“格式不正确”，仅提示服务不可用；并保持旧雷达值不变
-    ElMessage.error('量化失败：请确认后端服务与 AI 接口可用')
+    console.error('❌ [generateSandboxRadar] 接口调用失败:', e)
+    
+    // 错误处理：使用默认分数和通用分析报告
+    const defaultScores = {
+      gpa: 50,
+      project: 50,
+      intern: 50,
+      competition: 50,
+      english: 50,
+      leader: 50
+    }
+    
+    radarValues.gpa = defaultScores.gpa
+    radarValues.project = defaultScores.project
+    radarValues.intern = defaultScores.intern
+    radarValues.competition = defaultScores.competition
+    radarValues.english = defaultScores.english
+    radarValues.leader = defaultScores.leader
+
+    sandboxReportMarkdown.value = (
+      '## 📊 竞争力总览\n\n' +
+      '基于您提供的 6 个维度数据，系统已进行初步分析。\n\n' +
+      '## 📈 各维度分数\n\n' +
+      `- GPA 学术成绩：${defaultScores.gpa}/100\n` +
+      `- 项目实战经验：${defaultScores.project}/100\n` +
+      `- 名企实习经历：${defaultScores.intern}/100\n` +
+      `- 竞赛获奖情况：${defaultScores.competition}/100\n` +
+      `- 英语学术能力：${defaultScores.english}/100\n` +
+      `- 领导力与协作：${defaultScores.leader}/100\n\n` +
+      '## 💡 建议\n\n' +
+      '建议重点关注分数较低的维度，制定针对性的提升计划。'
+    )
+
+    let errorMsg = 'AI分析失败，使用默认报告'
+    if (e.response) {
+      if (e.response.status === 400) {
+        errorMsg = e.response.data?.error || '请求参数错误，请检查输入'
+      } else if (e.response.status >= 500) {
+        errorMsg = '后端服务器错误，请稍后重试'
+      }
+    } else if (e.request) {
+      errorMsg = '网络请求失败，请检查网络连接或后端服务是否正常运行'
+    } else {
+      errorMsg = e.message || 'AI分析失败，使用默认报告'
+    }
+    
+    ElMessage.error(errorMsg)
+  } finally {
+    sandboxReportLoading.value = false
   }
 }
 
-// 点击「生成AI分析报告」：复用项目现有 API_BASE + axios 调用方式，调用后端已有的 /api/analyze-experiment（返回 Markdown）
+// 点击「生成AI分析报告」：调用新的 /api/analyze_competitiveness 接口（与生成雷达图共用同一接口）
 const generateSandboxAiReport = async () => {
+  // 输入验证：至少填写一个维度
+  const hasInput = sandboxForm.gpa || sandboxForm.project || sandboxForm.intern || 
+                   sandboxForm.competition || sandboxForm.english || sandboxForm.leader
+  if (!hasInput) {
+    return ElMessage.warning('请填写至少一个维度的参数')
+  }
+
   sandboxReportLoading.value = true
   sandboxReportMarkdown.value = ''
+  
   try {
-    const payload = {
-      // 原始输入（便于 AI 理解）
-      'GPA（绩点）': sandboxForm.gpa,
-      '项目实战经验': sandboxForm.project,
-      '名企实习经历': sandboxForm.intern,
-      '竞赛获奖情况': sandboxForm.competition,
-      '英语学术能力': sandboxForm.english,
-      '领导力与协作': sandboxForm.leader,
-      // 量化后的雷达数据（用于分析）
-      '雷达图量化数据(0-100)': {
-        gpa: radarValues.gpa,
-        project: radarValues.project,
-        intern: radarValues.intern,
-        competition: radarValues.competition,
-        english: radarValues.english,
-        leader: radarValues.leader,
-      }
-    }
-
-    const res = await axios.post(`${API_BASE}/api/analyze-experiment`, {
-      answers: payload,
-      career: '个人竞争力沙盘分析'
+    const baseUrl = API_BASE || 'https://ai-career-helper-backend-u1s0.onrender.com'
+    const res = await axios.post(`${baseUrl}/api/analyze_competitiveness`, {
+      gpa: sandboxForm.gpa || '',
+      project_experience: sandboxForm.project || '',
+      internship: sandboxForm.intern || '',
+      competition: sandboxForm.competition || '',
+      english_academic: sandboxForm.english || '',
+      leadership: sandboxForm.leader || ''
+    }, {
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      timeout: 30000 // 30秒超时
     })
 
-    sandboxReportMarkdown.value = res?.data?.markdown || ''
-    if (!sandboxReportMarkdown.value) ElMessage.warning('AI 未返回报告内容，请稍后重试')
-    else ElMessage.success('AI 分析报告已生成')
+    if (res.data && res.data.success) {
+      const { quantized_scores, analysis_report, fallback } = res.data
+
+      // 更新雷达图数据（如果还没有更新过）
+      if (quantized_scores) {
+        radarValues.gpa = _clamp100(quantized_scores.gpa || 0)
+        radarValues.project = _clamp100(quantized_scores.project_experience || 0)
+        radarValues.intern = _clamp100(quantized_scores.internship || 0)
+        radarValues.competition = _clamp100(quantized_scores.competition || 0)
+        radarValues.english = _clamp100(quantized_scores.english_academic || 0)
+        radarValues.leader = _clamp100(quantized_scores.leadership || 0)
+      }
+
+      // 更新AI分析报告
+      if (analysis_report) {
+        sandboxReportMarkdown.value = analysis_report
+      } else {
+        ElMessage.warning('AI 未返回报告内容，请稍后重试')
+      }
+
+      if (fallback) {
+        ElMessage.warning('AI分析失败，使用默认报告')
+      } else {
+        ElMessage.success('AI 分析报告已生成')
+      }
+    } else {
+      throw new Error(res.data?.error || '接口返回格式错误')
+    }
   } catch (e) {
-    console.error(e)
-    ElMessage.error('生成失败：请确认后端服务已启动且 AI 接口可用')
+    console.error('❌ [generateSandboxAiReport] 接口调用失败:', e)
+    
+    // 错误处理：使用默认报告
+    sandboxReportMarkdown.value = (
+      '## 📊 竞争力总览\n\n' +
+      '基于您提供的 6 个维度数据，系统已进行初步分析。\n\n' +
+      '## 📈 各维度分数\n\n' +
+      `- GPA 学术成绩：${radarValues.gpa}/100\n` +
+      `- 项目实战经验：${radarValues.project}/100\n` +
+      `- 名企实习经历：${radarValues.intern}/100\n` +
+      `- 竞赛获奖情况：${radarValues.competition}/100\n` +
+      `- 英语学术能力：${radarValues.english}/100\n` +
+      `- 领导力与协作：${radarValues.leader}/100\n\n` +
+      '## 💡 建议\n\n' +
+      '建议重点关注分数较低的维度，制定针对性的提升计划。'
+    )
+
+    let errorMsg = 'AI分析失败，使用默认报告'
+    if (e.response) {
+      if (e.response.status === 400) {
+        errorMsg = e.response.data?.error || '请求参数错误，请检查输入'
+      } else if (e.response.status >= 500) {
+        errorMsg = '后端服务器错误，请稍后重试'
+      }
+    } else if (e.request) {
+      errorMsg = '网络请求失败，请检查网络连接或后端服务是否正常运行'
+    } else {
+      errorMsg = e.message || 'AI分析失败，使用默认报告'
+    }
+    
+    ElMessage.error(errorMsg)
   } finally {
     sandboxReportLoading.value = false
   }
@@ -2889,8 +3029,8 @@ onBeforeUnmount(() => {
                   </div>
 
                   <div class="card-actions" style="justify-content: flex-start;">
-                    <el-button type="primary" @click="generateSandboxRadar">
-                      生成雷达图
+                    <el-button type="primary" :loading="sandboxReportLoading" @click="generateSandboxRadar">
+                      {{ sandboxReportLoading ? 'AI分析中...' : '生成雷达图/分析报告' }}
                     </el-button>
                   </div>
                 </div>
@@ -2904,7 +3044,7 @@ onBeforeUnmount(() => {
                   <!-- AI 分析（按钮样式与左侧一致，布局紧贴雷达图下方） -->
                   <div class="card-actions" style="justify-content: flex-start; gap: 10px;">
                     <el-button type="primary" :loading="sandboxReportLoading" @click="generateSandboxAiReport">
-                      {{ sandboxReportLoading ? '生成中...' : '生成AI分析报告' }}
+                      {{ sandboxReportLoading ? 'AI分析中...' : '生成AI分析报告' }}
                     </el-button>
                   </div>
 
