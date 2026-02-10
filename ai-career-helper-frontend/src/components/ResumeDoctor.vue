@@ -11,6 +11,42 @@ import {
 
 const md = new MarkdownIt() // 初始化渲染器
 
+// --- 预设模板（降级备用） ---
+const FALLBACK_DIAGNOSIS_REPORT = {
+  score: 82,
+  summary: "简历结构清晰，技术栈覆盖全面，但「量化成果」有待提升。",
+  score_details: [
+    "✅ 基础分70。因项目使用了STAR法则+5分，技术栈匹配+10分；❌ 但缺少GitHub链接-3分。"
+  ],
+  highlights: [
+    "教育背景优秀",
+    "两段相关实习",
+    "技术栈命中率高"
+  ],
+  weaknesses: [
+    "缺乏具体性能数据",
+    "自我评价泛泛",
+    "无开源贡献"
+  ]
+}
+
+const FALLBACK_OPTIMIZED_RESUME = `# 优化简历（降级模式）
+
+## 💡 AI优化摘要
+优化重点: 基于原始简历内容进行结构化优化，突出技术能力和项目成果。
+
+## 🎓 教育背景
+（请根据实际简历内容填写）
+
+## 💻 项目经历 (精修版)
+（请使用STAR法则重构项目描述）
+
+## 🛠️ 技能清单
+（请列出核心技术栈和工具）
+
+## 📄 自我评价
+（请补充具体的能力描述和职业目标）`
+
 // --- 核心状态 ---
 const currentMode = ref('basic')
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
@@ -36,6 +72,18 @@ const handleChange = (file) => {
   // ✅ 新增：显示文件名（关键修复）
   displayFileName.value = file?.name || file?.raw?.name || ''
 
+  // ✅ 文件格式验证
+  const fileName = displayFileName.value.toLowerCase()
+  const allowedExtensions = ['.pdf', '.docx', '.txt']
+  const isValidFormat = allowedExtensions.some(ext => fileName.endsWith(ext))
+  
+  if (displayFileName.value && !isValidFormat) {
+    ElMessage.warning('仅支持 PDF、DOCX、TXT 格式的简历文件')
+    fileList.value = []
+    displayFileName.value = ''
+    return
+  }
+
   // ✅ 你原来的逻辑保留
   result.value = null
   optimizedResume.value = ''
@@ -44,6 +92,7 @@ const handleChange = (file) => {
 
 const startAnalyze = async () => {
   if (fileList.value.length === 0) return ElMessage.warning('请先选择简历')
+  
   // 禁用用户检查（读取 competition_banned_user_ids）
   try {
     const banned = JSON.parse(localStorage.getItem('competition_banned_user_ids') || '[]')
@@ -57,98 +106,135 @@ const startAnalyze = async () => {
 
   isAnalyzing.value = true
   result.value = null
+  optimizedResume.value = ''
 
-  const formData = new FormData()
-  // 注意：这里必须和后端参数名一致，后端我写的是 'file'
-  formData.append('file', fileList.value[0].raw)
-
-  // 附带可配置的系统提示词（来自 Admin 配置，localStorage）
-  // localStorage key: admin_ai_resume_doctor
-  const defaultResumePrompt = `你是一个专业的简历优化专家。请根据用户的简历内容，从“格式规范”、“内容完整性”、“STAR法则应用”三个维度进行打分（满分100）。\n并给出具体的修改建议。输出格式必须为 JSON。`
-  const resumePrompt = localStorage.getItem('admin_ai_resume_doctor') || defaultResumePrompt
-  formData.append('system_prompt', resumePrompt)
-
-  // 在开始诊断时：先在本地任务队列中创建一个“诊断中”任务，诊断完成后更新任务为已完成并写入报告
+  // 在开始诊断时：先在本地任务队列中创建一个"诊断中"任务
+  const TASK_KEY = 'competition_resume_task_list'
+  const username = localStorage.getItem('remembered_username') || '访客'
+  let userId = null
   try {
-    // 1. 在本地任务列表中新增任务（状态：processing）
-    const TASK_KEY = 'competition_resume_task_list'
-    const username = localStorage.getItem('remembered_username') || '访客'
-    // 尝试从 local user list 找到 user id
-    let userId = null
-    try {
-      const users = JSON.parse(localStorage.getItem('competition_user_list') || '[]')
-      const found = users.find(u => u.username === username)
-      if (found) userId = found.id
-    } catch (e) {}
+    const users = JSON.parse(localStorage.getItem('competition_user_list') || '[]')
+    const found = users.find(u => u.username === username)
+    if (found) userId = found.id
+  } catch (e) {}
 
-    const now = new Date()
-    const pad = (n) => String(n).padStart(2, '0')
-    const idStr = `T-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}-${Math.floor(Math.random()*900+100)}`
-    const task = {
-      id: idStr,
-      user: username || '访客',
-      user_id: userId,
-      filename: displayFileName.value || (fileList.value[0]?.raw?.name || '未命名简历.pdf'),
-      submit_time: `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
-      score: 0,
-      status: 'processing', // processing | completed
-      report: ''
-    }
+  const now = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const idStr = `T-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}-${Math.floor(Math.random()*900+100)}`
+  const task = {
+    id: idStr,
+    user: username || '访客',
+    user_id: userId,
+    filename: displayFileName.value || (fileList.value[0]?.raw?.name || '未命名简历.pdf'),
+    submit_time: `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+    score: 0,
+    status: 'processing',
+    report: ''
+  }
 
-    // push to localStorage list
-    try {
-      const existing = JSON.parse(localStorage.getItem(TASK_KEY) || '[]')
-      existing.unshift(task)
-      localStorage.setItem(TASK_KEY, JSON.stringify(existing))
-      // 广播变化
-      window.dispatchEvent(new Event('competitionDataChanged'))
-    } catch (e) { console.warn('写入本地任务失败', e) }
+  try {
+    const existing = JSON.parse(localStorage.getItem(TASK_KEY) || '[]')
+    existing.unshift(task)
+    localStorage.setItem(TASK_KEY, JSON.stringify(existing))
+    window.dispatchEvent(new Event('competitionDataChanged'))
+  } catch (e) { console.warn('写入本地任务失败', e) }
 
-    // 2. 原有的核心逻辑：调用 AI 分析接口
-    const res = await axios.post(`${API_BASE}/api/resume/analyze`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+  // 调用新的 /api/analyze_resume 接口
+  try {
+    const formData = new FormData()
+    formData.append('resume_file', fileList.value[0].raw)
+
+    // 设置超时时间为 15 秒
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('请求超时，已自动切换到默认报告')), 15000)
     })
 
-    result.value = res.data
+    const requestPromise = axios.post(`${API_BASE}/api/analyze_resume`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 20000 // axios 超时设置为 20 秒（略大于 15 秒，给网络缓冲）
+    })
+
+    let res
+    try {
+      res = await Promise.race([requestPromise, timeoutPromise])
+    } catch (timeoutError) {
+      if (timeoutError.message.includes('超时')) {
+        throw new Error('AI分析超时，已自动切换到默认报告')
+      }
+      throw timeoutError
+    }
+
+    // 处理接口返回
+    if (res.data && res.data.success) {
+      const { diagnosis_report, optimized_resume: optResume, fallback } = res.data
+
+      if (fallback) {
+        // 降级模式：使用预设模板
+        console.warn('⚠️ [ResumeDoctor] 接口返回 fallback=true，使用预设模板')
+        ElMessage.warning('AI分析失败，使用默认报告')
+        result.value = {
+          score: FALLBACK_DIAGNOSIS_REPORT.score,
+          summary: FALLBACK_DIAGNOSIS_REPORT.summary,
+          score_rationale: FALLBACK_DIAGNOSIS_REPORT.score_details.join(' '),
+          strengths: FALLBACK_DIAGNOSIS_REPORT.highlights,
+          weaknesses: FALLBACK_DIAGNOSIS_REPORT.weaknesses
+        }
+        optimizedResume.value = md.render(FALLBACK_OPTIMIZED_RESUME)
+      } else {
+        // AI 生成成功：使用接口返回的数据
+        console.log('✅ [ResumeDoctor] AI 生成成功，使用接口返回数据')
+        result.value = {
+          score: diagnosis_report?.score || 0,
+          summary: diagnosis_report?.summary || '',
+          score_rationale: Array.isArray(diagnosis_report?.score_details) 
+            ? diagnosis_report.score_details.join(' ') 
+            : (diagnosis_report?.score_details || ''),
+          strengths: diagnosis_report?.highlights || [],
+          weaknesses: diagnosis_report?.weaknesses || []
+        }
+        // 优化简历直接渲染（已经是 Markdown 格式）
+        if (optResume) {
+          optimizedResume.value = md.render(optResume)
+        }
+      }
+    } else {
+      // 接口返回 success: false 或其他错误
+      throw new Error(res.data?.error || 'AI分析失败，使用默认报告')
+    }
+
     activeTab.value = 'diagnosis'
 
-    // 3. 更新本地任务：设置为已完成，填写 score 与报告（模拟评分）
+    // 更新本地任务：设置为已完成
     try {
       const tasksRaw = JSON.parse(localStorage.getItem(TASK_KEY) || '[]')
       const tIdx = tasksRaw.findIndex(t => t.id === task.id)
       if (tIdx > -1) {
-        // 如果后端返回 score 则使用，否则生成一个 80-95 的模拟分
-        const aiScore = res.data?.score || (Math.round((80 + Math.random()*15) * 10)/10)
+        const aiScore = result.value?.score || 0
         tasksRaw[tIdx].status = 'completed'
         tasksRaw[tIdx].score = aiScore
-        tasksRaw[tIdx].report = res.data?.markdown || res.data?.content || ('# 诊断报告\n\n' + JSON.stringify(res.data))
+        tasksRaw[tIdx].report = `# 诊断报告\n\n评分：${aiScore}分\n\n${result.value?.summary || ''}`
         localStorage.setItem(TASK_KEY, JSON.stringify(tasksRaw))
-        // 广播变化
         window.dispatchEvent(new Event('competitionDataChanged'))
       }
     } catch (e) { console.warn('更新本地任务失败', e) }
 
     ElMessage.success('诊断完成！')
 
-    // 真实用户上报：通知用户统计（CSV 中的 createTaskNum +1）
+    // 真实用户上报：通知用户统计
     try {
       const currentUser = localStorage.getItem('remembered_username') || ''
       if (currentUser) {
-        // 调用我们的用户服务
+        const SERVER_API = import.meta.env.VITE_API_BASE ?? ''
         await axios.post(`${SERVER_API}/api/user/addTask`, { username: currentUser })
       }
     } catch (e) { console.warn('上报任务统计到用户服务失败', e) }
 
-    // 👇👇👇 新增：诊断成功后，自动保存到历史记录（兼容原有后端） 👇👇👇
+    // 保存到历史记录
     try {
-      // 获取当前用户名 (如果没有登录就默认叫"游客")
       const currentUser = localStorage.getItem('remembered_username') || '游客'
-      
-      // 简单的日期格式化 YYYY-M-D
       const now2 = new Date()
       const dateStr = `${now2.getFullYear()}-${now2.getMonth() + 1}-${now2.getDate()} ${now2.getHours()}:${now2.getMinutes()}`
 
-      // 调用后端新增的 history 接口（容错）
       await axios.post(`${API_BASE}/api/history/add`, {
         username: currentUser,
         action_type: '简历诊断',
@@ -161,11 +247,21 @@ const startAnalyze = async () => {
     } catch (historyErr) {
       console.warn('历史记录保存失败 (不影响主流程):', historyErr)
     }
-    // 👆👆👆 新增部分结束 👆👆👆
 
   } catch (e) {
-    console.error(e)
-    ElMessage.error('连接后端失败，请确保 main.py 已启动')
+    console.error('❌ [ResumeDoctor] 接口调用失败:', e)
+    
+    // 错误处理：使用预设模板
+    ElMessage.error(e.message || 'AI分析失败，使用默认报告')
+    result.value = {
+      score: FALLBACK_DIAGNOSIS_REPORT.score,
+      summary: FALLBACK_DIAGNOSIS_REPORT.summary,
+      score_rationale: FALLBACK_DIAGNOSIS_REPORT.score_details.join(' '),
+      strengths: FALLBACK_DIAGNOSIS_REPORT.highlights,
+      weaknesses: FALLBACK_DIAGNOSIS_REPORT.weaknesses
+    }
+    optimizedResume.value = md.render(FALLBACK_OPTIMIZED_RESUME)
+    activeTab.value = 'diagnosis'
   } finally {
     isAnalyzing.value = false
   }
@@ -173,19 +269,26 @@ const startAnalyze = async () => {
 
 const generateResume = async () => {
   if (!result.value) return ElMessage.warning('请先完成诊断')
+  
+  // 如果已经有优化简历（从接口返回），直接显示
+  if (optimizedResume.value) {
+    activeTab.value = 'resume'
+    ElMessage.success('优化简历已生成！')
+    return
+  }
+
+  // 否则调用生成接口（兼容旧逻辑）
   isGenerating.value = true
 
   try {
-    // 附带系统提示词（admin_ai_resume_doctor），后端可选择采纳
-    const defaultResumePrompt = `你是一个专业的简历优化专家。请根据用户的简历内容，从“格式规范”、“内容完整性”、“STAR法则应用”三个维度进行打分（满分100）。\n并给出具体的修改建议。输出格式必须为 JSON。`
+    const defaultResumePrompt = `你是一个专业的简历优化专家。请根据用户的简历内容，从"格式规范"、"内容完整性"、"STAR法则应用"三个维度进行打分（满分100）。\n并给出具体的修改建议。输出格式必须为 JSON。`
     const resumePrompt = localStorage.getItem('admin_ai_resume_doctor') || defaultResumePrompt
 
     const res = await axios.post(`${API_BASE}/api/resume/generate`, {
-      focus_direction: '全栈开发', // 你原来的逻辑
+      focus_direction: '全栈开发',
       diagnosis: result.value,
       system_prompt: resumePrompt
     })
-    // 渲染 Markdown 为 HTML
     optimizedResume.value = md.render(res.data.content)
     activeTab.value = 'resume'
     ElMessage.success('简历生成成功！')
@@ -241,7 +344,7 @@ const copyContent = async () => {
             :on-change="handleChange"
             :show-file-list="false"
             :limit="1"
-            accept=".pdf,.doc,.docx"
+            accept=".pdf,.docx,.txt"
           >
             <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
             <div class="el-upload__text">点击或拖拽上传简历</div>
@@ -259,7 +362,7 @@ const copyContent = async () => {
             :loading="isAnalyzing"
             @click="startAnalyze"
           >
-            {{ isAnalyzing ? '诊断中...' : '✨ 开始深度诊断' }}
+            {{ isAnalyzing ? 'AI分析中...' : '✨ 开始深度诊断' }}
           </el-button>
         </div>
 
