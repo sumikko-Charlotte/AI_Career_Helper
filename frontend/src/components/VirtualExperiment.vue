@@ -8,7 +8,7 @@ import MarkdownIt from 'markdown-it'
 // Use Vite env variable to configure backend base URL to avoid hard-coding ports.
 // If not set, fall back to ngrok public address (https://unphrased-letha-lumpiest.ngrok-free.dev).
 // Changes made: switched to `VITE_API_BASE`, added debug logs, improved error handling for requests. (Modified: 2026-01-30)
-const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://ai-career-helper-backend-u1s0.onrender.com'
 const md = new MarkdownIt()
 
 // Debug helper: expose resolved API endpoint in console
@@ -318,10 +318,25 @@ const startBySearch = async () => {
   markdownProcessed.value = ''
 
   try {
-    const url = `${API_BASE}/api/generate-job-test`
-    console.debug('[VirtualExperiment] POST', url, { jobName: kw })
+    // 确保 API_BASE 不为空，如果为空则使用默认后端地址
+    const baseUrl = API_BASE || 'https://ai-career-helper-backend-u1s0.onrender.com'
+    const url = `${baseUrl}/api/generate-job-test`
+    const payload = { jobName: kw }
+    
+    console.debug('[VirtualExperiment] POST', url, payload)
+    console.debug('[VirtualExperiment] Request config:', {
+      method: 'POST',
+      url,
+      data: payload,
+      headers: { 'Content-Type': 'application/json' }
+    })
 
-    const res = await axios.post(url, { jobName: kw })
+    const res = await axios.post(url, payload, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    console.debug('[VirtualExperiment] Response:', res.status, res.data)
     const data = res?.data || {}
 
     // 后端约定的业务错误结构：{code, msg}
@@ -364,12 +379,37 @@ const startBySearch = async () => {
 
     ElMessage.success(`已为「${kw}」生成 AI 体验题目`)
   } catch (e) {
-    console.warn('generate-job-test request failed:', e)
-    const msg =
-      e.response?.data?.msg ||
-      e.message ||
-      'AI生成失败，请稍后重试'
-    ElMessage.error(msg)
+    console.error('generate-job-test request failed:', e)
+    console.error('Error details:', {
+      message: e.message,
+      response: e.response,
+      status: e.response?.status,
+      statusText: e.response?.statusText,
+      data: e.response?.data,
+      config: e.config
+    })
+    
+    // 详细的错误提示
+    let errorMsg = 'AI生成失败，请稍后重试'
+    if (e.response) {
+      if (e.response.status === 405) {
+        errorMsg = '接口请求方法错误（405），请确认后端接口支持 POST 方法'
+      } else if (e.response.status === 404) {
+        errorMsg = '接口不存在（404），请确认后端已部署 /api/generate-job-test 接口'
+      } else if (e.response.status === 400) {
+        errorMsg = e.response.data?.msg || '请求参数错误（400），请检查输入的职业名称'
+      } else if (e.response.status >= 500) {
+        errorMsg = e.response.data?.msg || '后端服务器错误（5xx），请稍后重试'
+      } else {
+        errorMsg = e.response.data?.msg || `请求失败（${e.response.status}），请稍后重试`
+      }
+    } else if (e.request) {
+      errorMsg = '网络请求失败，请检查网络连接或后端服务是否正常运行'
+    } else {
+      errorMsg = e.message || 'AI生成失败，请稍后重试'
+    }
+    
+    ElMessage.error(errorMsg)
   } finally {
     loadingCustomCareer.value = false
   }
