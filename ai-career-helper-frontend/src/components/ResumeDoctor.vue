@@ -63,6 +63,8 @@ const result = ref(null)
 const activeTab = ref('diagnosis')
 const isGenerating = ref(false)
 const optimizedResume = ref('')
+// 预留：如未来支持纯文本输入，可通过该变量传给后端的 resume_text
+const resumeText = ref('')
 
 // --- 方法 ---
 const handleChange = (file) => {
@@ -143,6 +145,10 @@ const startAnalyze = async () => {
   try {
     const formData = new FormData()
     formData.append('resume_file', fileList.value[0].raw)
+    // 如有简历文本输入，可一并上传（后端为可选参数）
+    if (resumeText.value) {
+      formData.append('resume_text', resumeText.value)
+    }
 
     // 设置超时时间为 15 秒
     const timeoutPromise = new Promise((_, reject) => {
@@ -250,9 +256,21 @@ const startAnalyze = async () => {
 
   } catch (e) {
     console.error('❌ [ResumeDoctor] 接口调用失败:', e)
-    
+
+    // 适配后端 400/422/5xx 错误，并启用前端降级模板
+    if (e.response?.status === 400) {
+      ElMessage.error(e.response.data?.error || '请提供简历文件或文本内容')
+    } else if (e.response?.status === 422) {
+      ElMessage.error('参数格式错误，请检查文件类型（支持PDF/DOCX/TXT）')
+    } else if (e.response?.status >= 500) {
+      ElMessage.error(e.response.data?.error || '服务器错误，已启用降级模式')
+    } else if (e.request) {
+      ElMessage.error('网络请求失败，请检查网络连接或后端服务是否正常运行')
+    } else {
+      ElMessage.error(e.message || 'AI分析失败，使用默认报告')
+    }
+
     // 错误处理：使用预设模板
-    ElMessage.error(e.message || 'AI分析失败，使用默认报告')
     result.value = {
       score: FALLBACK_DIAGNOSIS_REPORT.score,
       summary: FALLBACK_DIAGNOSIS_REPORT.summary,
