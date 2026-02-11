@@ -143,32 +143,21 @@ const startAnalyze = async () => {
 
   // 调用新的 /api/analyze_resume 接口
   try {
+    const selectedFile = fileList.value[0]?.raw
+    if (!selectedFile) {
+      throw new Error('未找到有效的简历文件，请重新上传')
+    }
+
     const formData = new FormData()
-    formData.append('resume_file', fileList.value[0].raw)
-    // 如有简历文本输入，可一并上传（后端为可选参数）
-    if (resumeText.value) {
-      formData.append('resume_text', resumeText.value)
-    }
+    // 字段名必须与后端保持一致：resume_file
+    formData.append('resume_file', selectedFile)
+    console.log('✅ 准备上传的文件:', selectedFile.name, '字段名: resume_file')
 
-    // 设置超时时间为 15 秒
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('请求超时，已自动切换到默认报告')), 15000)
+    const baseUrl = API_BASE || 'https://ai-career-helper-backend-u1s0.onrender.com'
+    const res = await axios.post(`${baseUrl}/api/analyze_resume`, formData, {
+      // 不手动设置 Content-Type，交给浏览器自动生成 boundary
+      timeout: 60000
     })
-
-    const requestPromise = axios.post(`${API_BASE}/api/analyze_resume`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 20000 // axios 超时设置为 20 秒（略大于 15 秒，给网络缓冲）
-    })
-
-    let res
-    try {
-      res = await Promise.race([requestPromise, timeoutPromise])
-    } catch (timeoutError) {
-      if (timeoutError.message.includes('超时')) {
-        throw new Error('AI分析超时，已自动切换到默认报告')
-      }
-      throw timeoutError
-    }
 
     // 处理接口返回
     if (res.data && res.data.success) {
