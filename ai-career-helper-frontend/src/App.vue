@@ -2092,29 +2092,31 @@ const generateSandboxAiReport = async () => {
     })
 
     if (res.data && res.data.success) {
-      const { quantized_scores, analysis_report, fallback } = res.data
+      // 后端可能返回 markdown 或 analysis_report，优先使用 analysis_report
+      const reportContent = res.data.analysis_report || res.data.markdown
+      const { quantized_scores, fallback } = res.data
 
-      // 更新雷达图数据（如果还没有更新过）
+      // 更新雷达图数据（如果后端返回了量化分数）
       if (quantized_scores) {
         radarValues.gpa = _clamp100(quantized_scores.gpa || 0)
-        radarValues.project = _clamp100(quantized_scores.project_experience || 0)
-        radarValues.intern = _clamp100(quantized_scores.internship || 0)
+        radarValues.project = _clamp100(quantized_scores.project_experience || quantized_scores.project || 0)
+        radarValues.intern = _clamp100(quantized_scores.internship || quantized_scores.intern || 0)
         radarValues.competition = _clamp100(quantized_scores.competition || 0)
-        radarValues.english = _clamp100(quantized_scores.english_academic || 0)
-        radarValues.leader = _clamp100(quantized_scores.leadership || 0)
+        radarValues.english = _clamp100(quantized_scores.english_academic || quantized_scores.english || 0)
+        radarValues.leader = _clamp100(quantized_scores.leadership || quantized_scores.leader || 0)
       }
 
       // 更新AI分析报告
-      if (analysis_report) {
-        sandboxReportMarkdown.value = analysis_report
+      if (reportContent) {
+        sandboxReportMarkdown.value = reportContent
+        if (fallback) {
+          ElMessage.warning('AI分析失败，使用默认报告')
+        } else {
+          ElMessage.success('AI 分析报告已生成')
+        }
       } else {
+        sandboxReportMarkdown.value = ''
         ElMessage.warning('AI 未返回报告内容，请稍后重试')
-      }
-
-      if (fallback) {
-        ElMessage.warning('AI分析失败，使用默认报告')
-      } else {
-        ElMessage.success('AI 分析报告已生成')
       }
     } else {
       throw new Error(res.data?.error || '接口返回格式错误')
@@ -2939,8 +2941,8 @@ onBeforeUnmount(() => {
                   </div>
 
                   <div class="card-actions" style="justify-content: flex-start;">
-                    <el-button type="primary" :loading="sandboxReportLoading" @click="generateSandboxRadar">
-                      {{ sandboxReportLoading ? 'AI分析中...' : '生成雷达图/分析报告' }}
+                    <el-button type="primary" @click="generateSandboxRadar">
+                      生成雷达图
                     </el-button>
                   </div>
                 </div>

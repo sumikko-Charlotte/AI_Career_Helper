@@ -17,7 +17,7 @@
 
     <!-- 右侧主内容区 -->
     <div class="main-content">
-      <h1 class="slogan">职航——AI辅助的大学生生涯成长平台</h1>
+      <img src="/images/slogan-main.png" alt="职航——AI辅助的大学生生涯成长平台" class="slogan-image" />
       <p class="sub-slogan">发现你的无限可能</p>
       <button class="start-btn" @click="goToRegister">开始探索</button>
     </div>
@@ -116,6 +116,23 @@ const router = useRouter()
     color: #FFFFFF;
   }
   
+  /* Slogan 图片样式：确保在深色背景下清晰可见 */
+  .slogan-image {
+    max-width: 80%;
+    height: auto;
+    margin: 0 auto 20px;
+    display: block;
+    /* 白色外发光效果，增强对比度 */
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.8)) drop-shadow(0 0 16px rgba(255, 255, 255, 0.4)) brightness(1.05);
+    transition: all 0.3s ease;
+  }
+
+  .slogan-image:hover {
+    filter: drop-shadow(0 0 12px rgba(255, 255, 255, 1)) drop-shadow(0 0 24px rgba(255, 255, 255, 0.6)) brightness(1.1);
+    transform: scale(1.02);
+  }
+
+  /* 保留原有 .slogan 类名样式（兼容性） */
   .slogan {
     font-size: 48px;
     font-weight: 700;
@@ -143,5 +160,27 @@ const router = useRouter()
   
   .start-btn:hover {
     transform: scale(1.05);
+  }
+
+  /* 响应式适配：移动端自动缩小，不超出屏幕 */
+  @media (max-width: 768px) {
+    .slogan-image {
+      max-width: 90%;
+      margin-bottom: 15px;
+    }
+    .sub-slogan {
+      font-size: 18px;
+      margin-bottom: 40px;
+    }
+    .start-btn {
+      padding: 12px 32px;
+      font-size: 16px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .slogan-image {
+      max-width: 95%;
+    }
   }
   </style>
