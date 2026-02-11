@@ -8,18 +8,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import json
-<<<<<<< HEAD
 from typing import List
-=======
 from typing import List, Optional
->>>>>>> backend-update
 import shutil  # 👈 新增
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from openai import OpenAI
-<<<<<<< HEAD
 from io import BytesIO
-=======
 import io
 import traceback
 
@@ -37,7 +32,6 @@ try:
 except ImportError:
     DOCX_SUPPORT = False
     print("⚠️ python-docx 未安装，DOCX 文件解析功能将不可用")
->>>>>>> backend-update
 
 # ==========================================
 # 导入数据库配置和操作函数
@@ -309,6 +303,11 @@ class AnalyzeCompetitivenessRequest(BaseModel):
     english_academic: str  # 英语学术能力
     leadership: str  # 领导力与协作
     meta: dict | None = None  # 前端已提取的元信息：身份/方向/时长/生成时间
+
+
+class AnalyzeNaturalLanguageRequest(BaseModel):
+    """竞争力沙盘自然语言量化请求体"""
+    text: str
 
 # ==========================================
 #  Mock 数据库 (职位数据)
@@ -1767,6 +1766,114 @@ def _quantize_score(value: str, dimension_name: str) -> int:
         print(f"❌ [quantize_score] AI 量化失败 ({dimension_name}: '{value}'): {e}")
         # AI 量化失败，返回默认分数 50
         return 50
+
+
+@app.post("/api/analyze_natural_language")
+def analyze_natural_language(req: AnalyzeNaturalLanguageRequest):
+    """
+    竞争力沙盘自然语言量化接口
+
+    接收一段包含 GPA / 项目 / 实习 / 竞赛 / 英语 / 领导力 等信息的自然语言文本，
+    调用 DeepSeek 提取并量化为 0-100 分数。
+
+    返回示例：
+    {
+      "success": true,
+      "scores": {
+        "gpa": 95,
+        "project": 80,
+        "intern": 90,
+        "competition": 100,
+        "english": 90,
+        "leader": 85
+      },
+      "fallback": false
+    }
+    """
+    import traceback
+
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text 不能为空")
+
+    print(f"✅ [analyze_natural_language] 收到文本: {text[:80]}...")
+
+    # 默认兜底分数（若 AI 失败则使用）
+    fallback_scores = {
+        "gpa": 50,
+        "project": 50,
+        "intern": 50,
+        "competition": 50,
+        "english": 50,
+        "leader": 50,
+    }
+
+    try:
+        system_prompt = (
+            "你是一位专业的职业竞争力评估专家，擅长从自然语言描述中提取关键信息并量化。\n"
+            "用户会给出一段关于自己竞争力的综合描述，可能包含：GPA/绩点、项目数量与难度、名企实习经历、竞赛获奖、英语水平、领导力与协作等。\n"
+            "请你阅读用户的完整描述，根据以下规则，将 6 个维度量化为 0-100 分：\n"
+            "- gpa：学业成绩/GPA/排名/奖学金等\n"
+            "- project：项目实战（项目数量、复杂度、是否落地、是否与目标岗位相关）\n"
+            "- intern：名企实习经历（公司级别、实习时长、岗位匹配度）\n"
+            "- competition：竞赛获奖情况（校级/省级/国家级/国际级等）\n"
+            "- english：英语学术能力（四六级/雅思托福/论文/报告等）\n"
+            "- leader：领导力与协作（学生干部、项目负责人、团队协作经历等）\n"
+            "输出格式：严格按照以下 JSON 结构返回，不要任何多余话术：\n"
+            "{\n"
+            '  \"scores\": {\n'
+            '    \"gpa\": 0-100,\n'
+            '    \"project\": 0-100,\n'
+            '    \"intern\": 0-100,\n'
+            '    \"competition\": 0-100,\n'
+            '    \"english\": 0-100,\n'
+            '    \"leader\": 0-100\n'
+            "  }\n"
+            "}\n"
+            "注意：如果描述中某个维度完全缺失，请根据常识给出一个“保守中间值”（例如 40-60）而不是 0。"
+        )
+
+        user_prompt = f"以下是用户的自然语言描述：\n{text}"
+
+        data = _deepseek_json(system_prompt, user_prompt)
+        scores = data.get("scores") or {}
+
+        def _norm(key: str, default: int) -> int:
+            try:
+                v = scores.get(key, default)
+                v = int(float(v))
+                return max(0, min(100, v))
+            except Exception:
+                return default
+
+        normalized = {
+            "gpa": _norm("gpa", fallback_scores["gpa"]),
+            "project": _norm("project", fallback_scores["project"]),
+            "intern": _norm("intern", fallback_scores["intern"]),
+            "competition": _norm("competition", fallback_scores["competition"]),
+            "english": _norm("english", fallback_scores["english"]),
+            "leader": _norm("leader", fallback_scores["leader"]),
+        }
+
+        print(f"✅ [analyze_natural_language] 量化结果: {normalized}")
+
+        return {
+            "success": True,
+            "scores": normalized,
+            "fallback": False,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ [analyze_natural_language] 量化失败: {e}")
+        print(f"❌ [analyze_natural_language] 错误堆栈: {traceback.format_exc()}")
+        # AI 故障时使用兜底规则，保证前端功能可用
+        return {
+            "success": True,
+            "scores": fallback_scores,
+            "fallback": True,
+        }
 
 
 @app.post("/api/analyze_competitiveness")
