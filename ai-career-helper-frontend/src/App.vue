@@ -2119,7 +2119,9 @@ const generateSandboxAiReport = async () => {
       }
     }
 
-    const res = await axios.post(`${API_BASE}/api/analyze-experiment`, {
+    // 使用 POST 调用后端 /api/analyze-experiment 接口，确保不会走到前端域导致 405
+    const baseUrl = API_BASE || 'https://ai-career-helper-backend-u1s0.onrender.com'
+    const res = await axios.post(`${baseUrl}/api/analyze-experiment`, {
       answers: payload,
       career: '个人竞争力沙盘分析'
     })
