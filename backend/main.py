@@ -9,7 +9,7 @@ from pydantic import BaseModel
 import uvicorn
 import json
 from typing import List, Optional
-import shutil # 👈 新增
+import shutil  # 👈 新增
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from openai import OpenAI
@@ -35,16 +35,17 @@ except ImportError:
 # 导入数据库配置和操作函数
 # ==========================================
 from .db_config import (
-    get_db_connection, 
-    get_all_users, 
-    get_user_by_username, 
+    get_db_connection,
+    get_all_users,
+    get_user_by_username,
     user_login,
     update_user_field,
     update_user_multiple_fields,
     create_user,
     increment_user_field,
-    decrement_user_field
+    decrement_user_field,
 )
+
 app = FastAPI()
 
 os.makedirs("static/avatars", exist_ok=True)
@@ -53,30 +54,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
 if os.path.exists(frontend_dist):
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="frontend_assets")
-# --- 1. 跨域配置 (必不可少：支持自定义域名 + Cookie 登录) ---
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "")
 
-# 明确允许的前端域名（包含你的自定义域名）
-ORIGINS = [
-    # 本地开发
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    # 正式域名（根据需求可继续扩展）
-    "https://aicareerhelper.xyz",
-    "https://www.aicareerhelper.xyz",
-]
-
-if FRONTEND_ORIGIN and FRONTEND_ORIGIN not in ORIGINS:
-    ORIGINS.append(FRONTEND_ORIGIN)
-
+# --- 1. 跨域配置：按需开放，确保支持 OPTIONS/POST/GET 等所有方法 ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ORIGINS,
-    # 继续允许 Vercel 子域名（如有需要）
-    allow_origin_regex=r"^https://.*\.vercel\.app$",
-    # ✅ 登录需要携带 Cookie，必须开启 credentials
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["*"],  # 包含 OPTIONS / POST / GET
     allow_headers=["*"],
 )
 
@@ -1425,8 +1409,8 @@ def generate_job_test(req: GenerateJobTestRequest):
 
 @app.post("/api/analyze_resume")
 async def analyze_resume(
-    resume_file: Optional[UploadFile] = File(None),
-    resume_text: Optional[str] = Form(None)
+    resume_file: UploadFile = File(...),
+    resume_text: Optional[str] = Form(None),
 ):
     """
     简历诊断与优化接口
