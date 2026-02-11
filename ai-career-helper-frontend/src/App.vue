@@ -1962,198 +1962,71 @@ const scheduleSandboxUpdate = () => {
 }
 watch(radarValues, () => { scheduleSandboxUpdate() })
 
-// 竞争力沙盘：AI 自动量化（允许自然语言自由输入；不做格式校验）
+// 竞争力沙盘：辅助函数（本地量化/限制分值）
 const _clamp100 = (n) => Math.max(0, Math.min(100, n))
-const _toFiniteNumber = (v, fallback) => {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').trim())
-  return Number.isFinite(n) ? n : fallback
-}
-const _extractJsonObject = (text) => {
-  if (!text) return null
-  const s = String(text)
-  // 先取 ```json ... ``` 包裹内容
-  const fenced = s.match(/```json\s*([\s\S]*?)\s*```/i)
-  if (fenced && fenced[1]) {
-    try { return JSON.parse(fenced[1]) } catch (_) {}
-  }
-  // 再尝试抓取第一个 JSON 对象
-  const obj = s.match(/\{[\s\S]*\}/)
-  if (obj && obj[0]) {
-    try { return JSON.parse(obj[0]) } catch (_) {}
-  }
-  return null
-}
 
-/**
- * 调用项目现有 AI 接口（沿用 axios + API_BASE）对自然语言进行量化。
- * 约束：不改后端/不引入新依赖，因此复用后端已存在的 `/api/analyze-experiment`（返回 markdown）。
- * 做法：让 AI 在 markdown 文本中包含一个可解析的 JSON 对象，我们从返回文本中提取并更新雷达图。
- */
-const aiQuantizeSandboxInputs = async () => {
-  const nl = {
-    gpa: sandboxForm.gpa,
-    project: sandboxForm.project,
-    intern: sandboxForm.intern,
-    competition: sandboxForm.competition,
-    english: sandboxForm.english,
-    leader: sandboxForm.leader,
+// 点击「生成雷达图/分析报告」：根据左侧输入直接映射数值 -> 更新 radarValues -> 触发雷达图重绘
+const generateSandboxRadar = () => {
+  // 读取输入
+  const rawGpa = parseFloat(sandboxForm.gpa) || 0
+  const leaderInput = parseInt(String(sandboxForm.leader || '').trim()) || 0
+  const englishInput = parseInt(String(sandboxForm.english || '').trim()) || 0
+  const competitionInput = String(sandboxForm.competition || '').trim()
+  const internInput = String(sandboxForm.intern || '').trim()
+  const projectInput = String(sandboxForm.project || '').trim()
+
+  // 帮助函数：从字符串中提取第一个整数
+  const extractInt = (v) => {
+    const m = String(v || '').match(/\d+/)
+    return m ? parseInt(m[0]) : 0
   }
 
-  const instruction = `
-你现在的任务是：把“个人竞争力沙盘”的 6 项自然语言描述量化到 0-100 分，并返回 JSON。
-
-【输出要求：必须包含且仅包含一个 JSON 对象（可以放在 Markdown 中，但 JSON 必须完整可解析）】
-{
-  "scores": {
-    "gpa": 0-100,
-    "project": 0-100,
-    "intern": 0-100,
-    "competition": 0-100,
-    "english": 0-100,
-    "leader": 0-100
-  },
-  "reasoning": "用 3-6 句话解释量化依据（可选）"
-}
-
-【量化规则提示】
-- 允许缺失：若用户写“无/没有/暂未”，给 10-30 的合理分
-- 若描述很强（名企实习、国奖、顶会论文等），给 80-100
-- 若描述一般（校级奖/普通项目），给 50-75
-- GPA：3.8/4.0 大约 90-98；3.0/4.0 大约 70-80；2.5/4.0 大约 55-70
-`
-
-  // 复用现有 AI 调用方式：走后端 analyze-experiment（返回 markdown 文本）
-  const res = await axios.post(`${API_BASE}/api/analyze-experiment`, {
-    career: '个人竞争力沙盘量化',
-    answers: {
-      instruction,
-      inputs: nl
-    }
-  })
-
-  const markdown = res?.data?.markdown || ''
-  const parsed = _extractJsonObject(markdown)
-  const scores = parsed?.scores || {}
-
-  // 即使 AI 未返回可解析 JSON，也要保证功能可用：做温和兜底（保持原值，不弹“格式不正确”）
-  const next = {
-    gpa: _clamp100(_toFiniteNumber(scores.gpa, radarValues.gpa)),
-    project: _clamp100(_toFiniteNumber(scores.project, radarValues.project)),
-    intern: _clamp100(_toFiniteNumber(scores.intern, radarValues.intern)),
-    competition: _clamp100(_toFiniteNumber(scores.competition, radarValues.competition)),
-    english: _clamp100(_toFiniteNumber(scores.english, radarValues.english)),
-    leader: _clamp100(_toFiniteNumber(scores.leader, radarValues.leader)),
+  // 1) GPA：如果是 0-4 分制，则按 4 分制映射到 0-100；否则视为 0-100 直接使用
+  let gpaScore
+  if (rawGpa > 0 && rawGpa <= 4) {
+    gpaScore = _clamp100(Math.round((rawGpa / 4) * 100))
+  } else {
+    gpaScore = _clamp100(rawGpa)
   }
 
-  return { markdown, next }
+  // 2) 领导协作：直接视为 0-100
+  const leadershipScore = _clamp100(leaderInput)
+
+  // 3) 英语能力：直接视为 0-100
+  const englishScore = _clamp100(englishInput)
+
+  // 4) 竞赛获奖：简单规则
+  let competitionScore = 0
+  if (!competitionInput) {
+    competitionScore = 0
+  } else if (competitionInput.includes('国')) {
+    competitionScore = 100
+  } else if (competitionInput.includes('省')) {
+    competitionScore = 80
+  } else {
+    competitionScore = 60
+  }
+
+  // 5) 实习经验：提取段数，每段 +30 分，最多 90 分
+  const internCount = extractInt(internInput)
+  const internshipScore = _clamp100(Math.min(internCount * 30, 90))
+
+  // 6) 项目实战：提取项目个数，每个 +10 分，最多 100 分
+  const projectCount = extractInt(projectInput)
+  const projectScore = _clamp100(Math.min(projectCount * 10, 100))
+
+  // 写回 radarValues（注意与 radar 维度顺序一一对应）
+  radarValues.gpa = gpaScore                     // 学业成绩 (GPA)
+  radarValues.project = projectScore             // 项目实战
+  radarValues.intern = internshipScore           // 实习经验
+  radarValues.competition = competitionScore     // 竞赛获奖
+  radarValues.english = englishScore             // 英语能力
+  radarValues.leader = leadershipScore           // 领导协作
+
+  ElMessage.success('雷达图已根据最新输入更新')
 }
 
-// 点击「生成雷达图/分析报告」：调用新的 /api/analyze_competitiveness 接口
-const generateSandboxRadar = async () => {
-  // 输入验证：至少填写一个维度
-  const hasInput = sandboxForm.gpa || sandboxForm.project || sandboxForm.intern || 
-                   sandboxForm.competition || sandboxForm.english || sandboxForm.leader
-  if (!hasInput) {
-    return ElMessage.warning('请填写至少一个维度的参数')
-  }
-
-  sandboxReportLoading.value = true
-  try {
-    const baseUrl = API_BASE || 'https://ai-career-helper-backend-u1s0.onrender.com'
-    const res = await axios.post(`${baseUrl}/api/analyze_competitiveness`, {
-      gpa: sandboxForm.gpa || '',
-      project_experience: sandboxForm.project || '',
-      internship: sandboxForm.intern || '',
-      competition: sandboxForm.competition || '',
-      english_academic: sandboxForm.english || '',
-      leadership: sandboxForm.leader || ''
-    }, {
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      timeout: 30000 // 30秒超时
-    })
-
-    if (res.data && res.data.success) {
-      const { quantized_scores, analysis_report, fallback } = res.data
-
-      // 更新雷达图数据（映射后端字段到前端字段）
-      if (quantized_scores) {
-        radarValues.gpa = _clamp100(quantized_scores.gpa || 0)
-        radarValues.project = _clamp100(quantized_scores.project_experience || 0)
-        radarValues.intern = _clamp100(quantized_scores.internship || 0)
-        radarValues.competition = _clamp100(quantized_scores.competition || 0)
-        radarValues.english = _clamp100(quantized_scores.english_academic || 0)
-        radarValues.leader = _clamp100(quantized_scores.leadership || 0)
-      }
-
-      // 更新AI分析报告
-      if (analysis_report) {
-        sandboxReportMarkdown.value = analysis_report
-      }
-
-      if (fallback) {
-        ElMessage.warning('AI分析失败，使用默认报告')
-      } else {
-        ElMessage.success('雷达图和分析报告已更新')
-      }
-    } else {
-      throw new Error(res.data?.error || '接口返回格式错误')
-    }
-  } catch (e) {
-    console.error('❌ [generateSandboxRadar] 接口调用失败:', e)
-    
-    // 错误处理：使用默认分数和通用分析报告
-    const defaultScores = {
-      gpa: 50,
-      project: 50,
-      intern: 50,
-      competition: 50,
-      english: 50,
-      leader: 50
-    }
-    
-    radarValues.gpa = defaultScores.gpa
-    radarValues.project = defaultScores.project
-    radarValues.intern = defaultScores.intern
-    radarValues.competition = defaultScores.competition
-    radarValues.english = defaultScores.english
-    radarValues.leader = defaultScores.leader
-
-    sandboxReportMarkdown.value = (
-      '## 📊 竞争力总览\n\n' +
-      '基于您提供的 6 个维度数据，系统已进行初步分析。\n\n' +
-      '## 📈 各维度分数\n\n' +
-      `- GPA 学术成绩：${defaultScores.gpa}/100\n` +
-      `- 项目实战经验：${defaultScores.project}/100\n` +
-      `- 名企实习经历：${defaultScores.intern}/100\n` +
-      `- 竞赛获奖情况：${defaultScores.competition}/100\n` +
-      `- 英语学术能力：${defaultScores.english}/100\n` +
-      `- 领导力与协作：${defaultScores.leader}/100\n\n` +
-      '## 💡 建议\n\n' +
-      '建议重点关注分数较低的维度，制定针对性的提升计划。'
-    )
-
-    let errorMsg = 'AI分析失败，使用默认报告'
-    if (e.response) {
-      if (e.response.status === 400) {
-        errorMsg = e.response.data?.error || '请求参数错误，请检查输入'
-      } else if (e.response.status >= 500) {
-        errorMsg = '后端服务器错误，请稍后重试'
-      }
-    } else if (e.request) {
-      errorMsg = '网络请求失败，请检查网络连接或后端服务是否正常运行'
-    } else {
-      errorMsg = e.message || 'AI分析失败，使用默认报告'
-    }
-    
-    ElMessage.error(errorMsg)
-  } finally {
-    sandboxReportLoading.value = false
-  }
-}
-
-// 点击「生成AI分析报告」：调用新的 /api/analyze_competitiveness 接口（与生成雷达图共用同一接口）
+// 点击「生成AI分析报告」：调用后端 /api/analyze-experiment 接口，基于量化后的 radarValues 生成 Markdown 报告
 const generateSandboxAiReport = async () => {
   // 输入验证：至少填写一个维度
   const hasInput = sandboxForm.gpa || sandboxForm.project || sandboxForm.intern || 
@@ -2166,19 +2039,30 @@ const generateSandboxAiReport = async () => {
   sandboxReportMarkdown.value = ''
   
   try {
+    const payload = {
+      // 原始输入（便于 AI 理解）
+      'GPA（绩点）': sandboxForm.gpa,
+      '项目实战经验': sandboxForm.project,
+      '名企实习经历': sandboxForm.intern,
+      '竞赛获奖情况': sandboxForm.competition,
+      '英语学术能力': sandboxForm.english,
+      '领导力与协作': sandboxForm.leader,
+      // 量化后的雷达数据（用于分析）
+      '雷达图量化数据(0-100)': {
+        gpa: radarValues.gpa,
+        project: radarValues.project,
+        intern: radarValues.intern,
+        competition: radarValues.competition,
+        english: radarValues.english,
+        leader: radarValues.leader,
+      }
+    }
+
+    // 使用 POST 调用后端 /api/analyze-experiment 接口，确保不会走到前端域导致 405
     const baseUrl = API_BASE || 'https://ai-career-helper-backend-u1s0.onrender.com'
-    const res = await axios.post(`${baseUrl}/api/analyze_competitiveness`, {
-      gpa: sandboxForm.gpa || '',
-      project_experience: sandboxForm.project || '',
-      internship: sandboxForm.intern || '',
-      competition: sandboxForm.competition || '',
-      english_academic: sandboxForm.english || '',
-      leadership: sandboxForm.leader || ''
-    }, {
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      timeout: 30000 // 30秒超时
+    const res = await axios.post(`${baseUrl}/api/analyze-experiment`, {
+      answers: payload,
+      career: '个人竞争力沙盘分析'
     })
 
     if (res.data && res.data.success) {

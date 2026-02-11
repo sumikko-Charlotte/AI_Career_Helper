@@ -3,17 +3,41 @@ import random
 import csv
 import os
 import datetime
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import json
+<<<<<<< HEAD
 from typing import List
+=======
+from typing import List, Optional
+>>>>>>> backend-update
 import shutil  # 👈 新增
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from openai import OpenAI
+<<<<<<< HEAD
 from io import BytesIO
+=======
+import io
+import traceback
+
+# 文件解析库（按需导入，避免依赖问题）
+try:
+    import PyPDF2
+    PDF_SUPPORT = True
+except ImportError:
+    PDF_SUPPORT = False
+    print("⚠️ PyPDF2 未安装，PDF 文件解析功能将不可用")
+
+try:
+    from docx import Document
+    DOCX_SUPPORT = True
+except ImportError:
+    DOCX_SUPPORT = False
+    print("⚠️ python-docx 未安装，DOCX 文件解析功能将不可用")
+>>>>>>> backend-update
 
 # ==========================================
 # 导入数据库配置和操作函数
@@ -152,6 +176,58 @@ def extract_text_from_file(upload_file: UploadFile) -> str:
             pass
 
 # ==========================================
+#  简历文件解析函数
+# ==========================================
+def extract_text_from_file(upload_file: UploadFile) -> str:
+    """从上传的文件中提取文本内容"""
+    import PyPDF2
+    from docx import Document
+    from io import BytesIO
+
+    try:
+        # 读取文件内容
+        file_content = upload_file.file.read()
+        file_name = upload_file.filename.lower() if upload_file.filename else ""
+
+        # 根据文件类型解析内容
+        if file_name.endswith(".pdf"):
+            reader = PyPDF2.PdfReader(BytesIO(file_content))
+            text_parts = []
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text_parts.append(page_text)
+            text = "\n".join(text_parts)
+        elif file_name.endswith(".docx"):
+            doc = Document(BytesIO(file_content))
+            text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
+        elif file_name.endswith(".txt"):
+            try:
+                text = file_content.decode("utf-8")
+            except UnicodeDecodeError:
+                text = file_content.decode("gbk")  # 兼容中文编码
+        else:
+            raise HTTPException(status_code=400, detail="不支持的文件格式，请上传 PDF/DOCX/TXT 文件。")
+
+        # 检查解析后的内容是否为空
+        if not text or not text.strip():
+            raise HTTPException(status_code=400, detail="文件内容为空，或无法从文件中提取有效文本。")
+
+        return text.strip()
+
+    except HTTPException:
+        # 直接向上抛出，让 /api/analyze_resume 返回对应的 400 提示
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"文件解析失败: {str(e)}")
+    finally:
+        # 重置文件指针，以便后续操作
+        try:
+            upload_file.file.seek(0)
+        except Exception:
+            pass
+
+# ==========================================
 #  模型定义 (整合了所有功能的数据结构)
 # ==========================================
 class LoginRequest(BaseModel):
@@ -215,6 +291,10 @@ class GenerateCareerRequest(BaseModel):
 
 class VirtualCareerQuestionsRequest(BaseModel):
     career: str
+
+class GenerateJobTestRequest(BaseModel):
+    """生成职业虚拟体验 + 15 道测试题的请求体"""
+    jobName: str
 
 class GenerateInterviewReportRequest(BaseModel):
     chat_history: list  # 完整的对话历史记录
@@ -1241,6 +1321,358 @@ def virtual_career_questions(req: VirtualCareerQuestionsRequest):
         "career": data.get("career", req.career),
         "questions": questions[:15],
     }
+
+@app.post("/api/generate-job-test")
+def generate_job_test(req: GenerateJobTestRequest):
+    """
+    根据用户输入的职业名称：
+    1. 调用 DeepSeek 生成该职业的虚拟体验脚本（包含职业定义、典型场景、3~5 个互动选择及结果）
+    2. 再调用 DeepSeek 生成 15 道职业相关测试题（单选题，每题 4 个选项）
+
+    返回格式（与原有接口 /api/virtual-career/questions 完全一致）：
+    {
+      "jobScript": "AI生成的职业体验脚本",
+      "questions": [
+        {
+          "id": "q1",
+          "title": "题干",
+          "options": ["选项A", "选项B", "选项C", "选项D"],
+          "correctAnswer": "A",
+          "score": 1
+        },
+        ... 共 15 道题 ...
+      ]
+    }
+
+    异常格式：
+    - 职业名为空：{code: 400, msg: "请输入职业名"}
+    - AI 生成失败：{code: 500, msg: "AI生成失败，请稍后重试"}
+    
+    注意：此接口仅支持 POST 请求方法，已配置 CORS 支持 OPTIONS 预检请求
+    """
+    import traceback
+    print(f"✅ [generate-job-test] 收到 POST 请求: jobName={req.jobName}")
+    print(f"✅ [generate-job-test] 请求体类型: {type(req)}, 请求体内容: {req.model_dump()}")
+    
+    job_name = (req.jobName or "").strip()
+    if not job_name:
+        print(f"❌ [generate-job-test] 职业名为空")
+        return JSONResponse(status_code=400, content={"code": 400, "msg": "请输入职业名"})
+
+    try:
+        print(f"🔄 [generate-job-test] 开始生成职业体验脚本: {job_name}")
+        # 第一步：生成职业体验脚本（文本即可，可包含 Markdown）
+        script_system_prompt = (
+            "你是一名职业体验设计师，负责为用户设计沉浸式「虚拟职业体验」脚本。\n"
+            "目标：针对指定职业，生成一段完整的体验脚本，帮助用户在几分钟内沉浸式感受该职业的真实工作场景。\n"
+            "必须包含以下内容（使用清晰的小标题或分段）：\n"
+            "1. 职业定义与核心职责概述（1~2 段）\n"
+            "2. 典型的一天/一周工作场景（2~3 段，可以具体到时间点和任务）\n"
+            "3. 设计 3~5 个关键抉择节点，每个节点：\n"
+            "   - 先用 2~3 句话描述当前情境\n"
+            "   - 给出 3 个左右可选操作（用 A/B/C 编号）\n"
+            "   - 对每个选项给出简短的结果反馈（包括积极或消极影响）\n"
+            "4. 最后的总结与建议（根据用户在体验中的倾向，给出 3~5 条建议）\n"
+            "要求：\n"
+            "- 使用通俗易懂的中文，语气亲切、有画面感\n"
+            "- 可以使用 Markdown 标题/列表增强可读性，但不要输出任何 JSON 结构\n"
+        )
+        script_user_prompt = (
+            f"目标职业名称：{job_name}\n\n"
+            "请基于你对该职业的理解，按照上述结构输出完整的职业体验脚本。"
+        )
+        script_text = _deepseek_markdown(script_system_prompt, script_user_prompt)
+        print(f"✅ [generate-job-test] 职业体验脚本生成完成，长度: {len(script_text)} 字符")
+
+        print(f"🔄 [generate-job-test] 开始生成 15 道测试题: {job_name}")
+        # 第二步：生成 15 道职业测试题（JSON）
+        # 返回格式必须与原有接口 /api/virtual-career/questions 完全一致
+        questions_system_prompt = (
+            "你是一名职业规划评估题目设计专家。\n"
+            "请针对指定职业设计 15 道用于评估匹配度的单选题，每题 4 个选项。\n"
+            "题目要尽量贴近真实工作场景，覆盖能力要求、工作方式偏好、压力/节奏、沟通协作等维度。\n"
+            "必须严格按照以下 JSON 结构返回：\n"
+            "{\n"
+            "  \"questions\": [\n"
+            "    {\n"
+            "      \"title\": \"题目 1 文本\",\n"
+            "      \"options\": [\"选项A\", \"选项B\", \"选项C\", \"选项D\"],\n"
+            "      \"correctAnswer\": \"A\",\n"
+            "      \"score\": 1\n"
+            "    },\n"
+            "    ... 共 15 道题 ...\n"
+            "  ]\n"
+            "}\n"
+            "注意：\n"
+            "- correctAnswer 必须是单个选项字母（如 \"A\"），表示正确答案\n"
+            "- score 为每题分值，统一为 1\n"
+            "- 确保每道题都有 4 个选项"
+        )
+        questions_user_prompt = (
+            "目标职业名称：\n"
+            f"{job_name}\n\n"
+            "如果这是一个非常冷门或未见过的职业，请先用 1-2 句话理解/假设这个职业的核心工作内容，"
+            "然后基于你的理解设计题目。"
+        )
+
+        questions_data = _deepseek_json(questions_system_prompt, questions_user_prompt)
+        raw_questions = questions_data.get("questions") or []
+        print(f"✅ [generate-job-test] AI 返回原始题目数量: {len(raw_questions)}")
+
+        # 基本校验
+        if not isinstance(raw_questions, list) or len(raw_questions) == 0:
+            raise ValueError("AI 未生成有效题目")
+
+        # 归一化为与原有接口完全一致的格式
+        normalized_questions = []
+        for idx, q in enumerate(raw_questions[:15], start=1):
+            if not isinstance(q, dict):
+                continue
+            
+            # 提取字段，兼容多种可能的字段名
+            question_text = q.get("title") or q.get("question") or q.get("stem") or f"第 {idx} 题"
+            options = q.get("options") or []
+            correct_answer = q.get("correctAnswer") or q.get("answer") or q.get("correct") or ""
+            score = q.get("score")
+            
+            # 确保选项为字符串列表，且至少有 4 个选项
+            options = [str(o) for o in options]
+            while len(options) < 4:
+                options.append(f"选项{chr(68 + len(options))}")  # 补充到 4 个选项
+            
+            # 确保 correctAnswer 是单个字母（如 "A"）
+            if correct_answer:
+                # 如果答案是 "A"、"B" 等，直接使用；如果是 "选项A"，提取字母
+                if len(correct_answer) == 1 and correct_answer.isalpha():
+                    correct_answer = correct_answer.upper()
+                elif "选项" in correct_answer or correct_answer.startswith("选项"):
+                    # 尝试从 "选项A" 中提取 "A"
+                    for char in correct_answer:
+                        if char.isalpha():
+                            correct_answer = char.upper()
+                            break
+                else:
+                    # 默认取第一个字符
+                    correct_answer = str(correct_answer)[0].upper() if correct_answer else "A"
+            else:
+                correct_answer = "A"  # 默认答案
+            
+            # score 默认为 1
+            if score is None:
+                score = 1
+            else:
+                try:
+                    score = int(score)
+                except (ValueError, TypeError):
+                    score = 1
+
+            # 构建与原有接口完全一致的题目结构
+            normalized_questions.append(
+                {
+                    "id": f"q{idx}",  # 保持字符串格式以兼容前端（前端使用 q.id.toUpperCase()）
+                    "title": question_text,
+                    "options": options[:4],  # 确保只有 4 个选项
+                    "correctAnswer": correct_answer,
+                    "score": score,
+                }
+            )
+
+        if not normalized_questions:
+            raise ValueError("AI 生成的题目结构异常")
+
+        # 返回格式与原有接口对齐：使用 jobScript 字段名（与原有 script 字段对应）
+        result = {
+            "jobScript": script_text,
+            "questions": normalized_questions,
+        }
+        print(f"✅ [generate-job-test] 成功生成 {len(normalized_questions)} 道题目，准备返回结果")
+        return result
+
+    except Exception as e:
+        # 统一转为前端友好的错误结构
+        print(f"❌ [generate-job-test] 生成失败: {e}")
+        print(f"❌ [generate-job-test] 错误堆栈: {traceback.format_exc()}")
+        return JSONResponse(status_code=500, content={"code": 500, "msg": "AI生成失败，请稍后重试"})
+
+
+@app.post("/api/analyze_resume")
+async def analyze_resume(
+    resume_file: UploadFile = File(...),
+    resume_text: Optional[str] = Form(None),
+):
+    """
+    简历诊断与优化接口
+    
+    支持两种输入方式：
+    1. 文件上传：resume_file（支持 PDF/DOCX/TXT）
+    2. 文本输入：resume_text（直接传入简历文本）
+    
+    返回格式：
+    {
+      "success": true,
+      "diagnosis_report": {
+        "score": 85,
+        "summary": "AI生成的综合评价",
+        "score_details": ["评分依据1", "评分依据2"],
+        "highlights": ["亮点1", "亮点2"],
+        "weaknesses": ["不足1", "不足2"]
+      },
+      "optimized_resume": "AI生成的Markdown格式优化简历",
+      "fallback": false
+    }
+    """
+    import traceback
+    
+    print(f"✅ [analyze_resume] 收到简历分析请求")
+    resume_file_name = resume_file.filename if resume_file and hasattr(resume_file, 'filename') else None
+    print(f"✅ [analyze_resume] 参数: resume_file={resume_file_name}, resume_text={'已提供' if resume_text else None}")
+    
+    # 1. 提取简历文本内容
+    resume_content = ""
+    try:
+        if resume_file:
+            print(f"🔄 [analyze_resume] 开始解析文件: {resume_file.filename}")
+            resume_content = extract_text_from_file(resume_file)
+        elif resume_text:
+            print(f"🔄 [analyze_resume] 使用文本输入，长度: {len(resume_text)} 字符")
+            resume_content = resume_text.strip()
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "请提供简历文件（resume_file）或简历文本（resume_text）"}
+            )
+        
+        if not resume_content:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "简历内容为空，请检查文件或文本内容"}
+            )
+        
+        print(f"✅ [analyze_resume] 简历内容提取成功，长度: {len(resume_content)} 字符")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ [analyze_resume] 文件解析异常: {e}")
+        print(f"❌ [analyze_resume] 错误堆栈: {traceback.format_exc()}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": f"文件解析失败: {str(e)}"}
+        )
+    
+    # 2. 调用 DeepSeek 生成诊断报告和优化简历
+    fallback_used = False
+    diagnosis_report = None
+    optimized_resume = None
+    
+    try:
+        print(f"🔄 [analyze_resume] 开始调用 DeepSeek API 生成诊断报告")
+        
+        # 2.1 生成诊断报告
+        diagnosis_system_prompt = (
+            "你是资深简历优化专家，分析以下简历内容，严格按以下JSON结构输出诊断报告，不要任何多余话术：\n"
+            "{\n"
+            '  "score": 数字（0-100）,\n'
+            '  "summary": "综合评价一句话",\n'
+            '  "score_details": ["评分依据1", "评分依据2"],\n'
+            '  "highlights": ["亮点1", "亮点2"],\n'
+            '  "weaknesses": ["不足1", "不足2"]\n'
+            "}"
+        )
+        diagnosis_user_prompt = f"简历内容：\n{resume_content}"
+        
+        diagnosis_data = _deepseek_json(diagnosis_system_prompt, diagnosis_user_prompt)
+        
+        # 归一化诊断报告结构
+        diagnosis_report = {
+            "score": int(diagnosis_data.get("score", 0)) if isinstance(diagnosis_data.get("score"), (int, float)) else 0,
+            "summary": diagnosis_data.get("summary", "AI 暂未生成综合评价"),
+            "score_details": diagnosis_data.get("score_details", []) if isinstance(diagnosis_data.get("score_details"), list) else [],
+            "highlights": diagnosis_data.get("highlights", []) if isinstance(diagnosis_data.get("highlights"), list) else [],
+            "weaknesses": diagnosis_data.get("weaknesses", []) if isinstance(diagnosis_data.get("weaknesses"), list) else [],
+        }
+        
+        print(f"✅ [analyze_resume] 诊断报告生成成功，评分: {diagnosis_report['score']}")
+        
+        # 2.2 生成优化简历
+        print(f"🔄 [analyze_resume] 开始调用 DeepSeek API 生成优化简历")
+        
+        optimize_system_prompt = (
+            "基于以下简历内容，优化为更专业的版本，严格按以下Markdown结构输出，不要任何多余话术：\n"
+            "# 你的姓名 (意向岗位: 全栈开发工程师)\n"
+            "电话: 138-xxxx-xxxx | 邮箱: email@example.com\n\n"
+            "## 💡 AI优化摘要\n"
+            "优化重点: ...\n\n"
+            "## 🎓 教育背景\n"
+            "北京邮电大学 | 人工智能学院 | 本科 | 2024-2028\n"
+            "- 主修课程: ...\n"
+            "- 核心优势: ...\n\n"
+            "## 💻 项目经历 (精修版)\n"
+            "### AI简历全科医生平台 | 全栈负责人 | FastAPI, Vue3, Docker, Redis\n"
+            "- **背景(S)**: ...\n"
+            "- **任务(T)**: ...\n"
+            "- **行动(A)**: ...\n"
+            "- **结果(R)**: ...\n\n"
+            "## 🛠️ 技能清单\n"
+            "- 核心技术: ...\n"
+            "- 工具: ...\n\n"
+            "## 📄 自我评价\n"
+            "- ..."
+        )
+        optimize_user_prompt = f"简历内容：\n{resume_content}"
+        
+        optimized_resume = _deepseek_markdown(optimize_system_prompt, optimize_user_prompt)
+        
+        print(f"✅ [analyze_resume] 优化简历生成成功，长度: {len(optimized_resume)} 字符")
+    
+    except Exception as e:
+        print(f"❌ [analyze_resume] DeepSeek API 调用失败: {e}")
+        print(f"❌ [analyze_resume] 错误堆栈: {traceback.format_exc()}")
+        
+        # 降级逻辑：返回预设的诊断报告和优化简历
+        fallback_used = True
+        print(f"⚠️ [analyze_resume] 启用降级逻辑，返回预设内容")
+        
+        diagnosis_report = {
+            "score": 82,
+            "summary": "简历结构清晰，技术栈覆盖全面，但「量化成果」有待提升。",
+            "score_details": [
+                "✅ 基础分70。因项目使用了STAR法则+5分，技术栈匹配+10分；❌ 但缺少GitHub链接-3分。"
+            ],
+            "highlights": [
+                "教育背景优秀",
+                "两段相关实习",
+                "技术栈命中率高"
+            ],
+            "weaknesses": [
+                "缺乏具体性能数据",
+                "自我评价泛泛",
+                "无开源贡献"
+            ]
+        }
+        
+        optimized_resume = (
+            "# 优化简历（降级模式）\n\n"
+            "## 💡 AI优化摘要\n"
+            "优化重点: 基于原始简历内容进行结构化优化，突出技术能力和项目成果。\n\n"
+            "## 🎓 教育背景\n"
+            "（请根据实际简历内容填写）\n\n"
+            "## 💻 项目经历 (精修版)\n"
+            "（请使用STAR法则重构项目描述）\n\n"
+            "## 🛠️ 技能清单\n"
+            "（请列出核心技术栈和工具）\n\n"
+            "## 📄 自我评价\n"
+            "（请补充具体的能力描述和职业目标）\n"
+        )
+    
+    # 3. 返回结果
+    return {
+        "success": True,
+        "diagnosis_report": diagnosis_report,
+        "optimized_resume": optimized_resume,
+        "fallback": fallback_used
+    }
+
 
 @app.post("/api/analyze-experiment")
 def analyze_experiment(req: AnalyzeExperimentRequest):

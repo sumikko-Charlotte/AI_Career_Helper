@@ -9,9 +9,9 @@ from pydantic import BaseModel
 import uvicorn
 import json
 from typing import List
-import shutil # 👈 新增
+import shutil  # 👈 新增
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from openai import OpenAI
 
 # ==========================================
@@ -150,6 +150,11 @@ class GenerateCareerRequest(BaseModel):
 
 class VirtualCareerQuestionsRequest(BaseModel):
     career: str
+
+
+class GenerateJobTestRequest(BaseModel):
+    """生成职业虚拟体验 + 15 道测试题的请求体"""
+    jobName: str
 
 class GenerateInterviewReportRequest(BaseModel):
     chat_history: list  # 完整的对话历史记录
@@ -1128,6 +1133,173 @@ def virtual_career_questions(req: VirtualCareerQuestionsRequest):
         "career": data.get("career", req.career),
         "questions": questions[:15],
     }
+
+
+@app.post("/api/generate-job-test")
+def generate_job_test(req: GenerateJobTestRequest):
+    """
+    根据用户输入的职业名称：
+    1. 调用 DeepSeek 生成该职业的虚拟体验脚本（包含职业定义、典型场景、3~5 个互动选择及结果）
+    2. 再调用 DeepSeek 生成 15 道职业相关测试题（单选题，每题 4 个选项）
+
+    返回格式（与原有接口 /api/virtual-career/questions 完全一致）：
+    {
+      "jobScript": "AI生成的职业体验脚本",
+      "questions": [
+        {
+          "id": "q1",
+          "title": "题干",
+          "options": ["选项A", "选项B", "选项C", "选项D"],
+          "correctAnswer": "A",
+          "score": 1
+        },
+        ... 共 15 道题 ...
+      ]
+    }
+
+    异常格式：
+    - 职业名为空：{code: 400, msg: "请输入职业名"}
+    - AI 生成失败：{code: 500, msg: "AI生成失败，请稍后重试"}
+    
+    注意：此接口仅支持 POST 请求方法
+    """
+    print(f"✅ [generate-job-test] 收到请求: jobName={req.jobName}")
+    job_name = (req.jobName or "").strip()
+    if not job_name:
+        print(f"❌ [generate-job-test] 职业名为空")
+        return JSONResponse(status_code=400, content={"code": 400, "msg": "请输入职业名"})
+
+    try:
+        # 第一步：生成职业体验脚本（文本即可，可包含 Markdown）
+        script_system_prompt = (
+            "你是一名职业体验设计师，负责为用户设计沉浸式“虚拟职业体验”脚本。\n"
+            "目标：针对指定职业，生成一段完整的体验脚本，帮助用户在几分钟内沉浸式感受该职业的真实工作场景。\n"
+            "必须包含以下内容（使用清晰的小标题或分段）：\n"
+            "1. 职业定义与核心职责概述（1~2 段）\n"
+            "2. 典型的一天/一周工作场景（2~3 段，可以具体到时间点和任务）\n"
+            "3. 设计 3~5 个关键抉择节点，每个节点：\n"
+            "   - 先用 2~3 句话描述当前情境\n"
+            "   - 给出 3 个左右可选操作（用 A/B/C 编号）\n"
+            "   - 对每个选项给出简短的结果反馈（包括积极或消极影响）\n"
+            "4. 最后的总结与建议（根据用户在体验中的倾向，给出 3~5 条建议）\n"
+            "要求：\n"
+            "- 使用通俗易懂的中文，语气亲切、有画面感\n"
+            "- 可以使用 Markdown 标题/列表增强可读性，但不要输出任何 JSON 结构\n"
+        )
+        script_user_prompt = (
+            f"目标职业名称：{job_name}\n\n"
+            "请基于你对该职业的理解，按照上述结构输出完整的职业体验脚本。"
+        )
+        script_text = _deepseek_markdown(script_system_prompt, script_user_prompt)
+
+        # 第二步：生成 15 道职业测试题（JSON）
+        # 返回格式必须与原有接口 /api/virtual-career/questions 完全一致
+        questions_system_prompt = (
+            "你是一名职业规划评估题目设计专家。\n"
+            "请针对指定职业设计 15 道用于评估匹配度的单选题，每题 4 个选项。\n"
+            "题目要尽量贴近真实工作场景，覆盖能力要求、工作方式偏好、压力/节奏、沟通协作等维度。\n"
+            "必须严格按照以下 JSON 结构返回：\n"
+            "{\n"
+            "  \"questions\": [\n"
+            "    {\n"
+            "      \"title\": \"题目 1 文本\",\n"
+            "      \"options\": [\"选项A\", \"选项B\", \"选项C\", \"选项D\"],\n"
+            "      \"correctAnswer\": \"A\",\n"
+            "      \"score\": 1\n"
+            "    },\n"
+            "    ... 共 15 道题 ...\n"
+            "  ]\n"
+            "}\n"
+            "注意：\n"
+            "- correctAnswer 必须是单个选项字母（如 \"A\"），表示正确答案\n"
+            "- score 为每题分值，统一为 1\n"
+            "- 确保每道题都有 4 个选项"
+        )
+        questions_user_prompt = (
+            "目标职业名称：\n"
+            f"{job_name}\n\n"
+            "如果这是一个非常冷门或未见过的职业，请先用 1-2 句话理解/假设这个职业的核心工作内容，"
+            "然后基于你的理解设计题目。"
+        )
+
+        questions_data = _deepseek_json(questions_system_prompt, questions_user_prompt)
+        raw_questions = questions_data.get("questions") or []
+
+        # 基本校验
+        if not isinstance(raw_questions, list) or len(raw_questions) == 0:
+            raise ValueError("AI 未生成有效题目")
+
+        # 归一化为与原有接口完全一致的格式
+        normalized_questions = []
+        for idx, q in enumerate(raw_questions[:15], start=1):
+            if not isinstance(q, dict):
+                continue
+            
+            # 提取字段，兼容多种可能的字段名
+            question_text = q.get("title") or q.get("question") or q.get("stem") or f"第 {idx} 题"
+            options = q.get("options") or []
+            correct_answer = q.get("correctAnswer") or q.get("answer") or q.get("correct") or ""
+            score = q.get("score")
+            
+            # 确保选项为字符串列表，且至少有 4 个选项
+            options = [str(o) for o in options]
+            while len(options) < 4:
+                options.append(f"选项{chr(68 + len(options))}")  # 补充到 4 个选项
+            
+            # 确保 correctAnswer 是单个字母（如 "A"）
+            if correct_answer:
+                # 如果答案是 "A"、"B" 等，直接使用；如果是 "选项A"，提取字母
+                if len(correct_answer) == 1 and correct_answer.isalpha():
+                    correct_answer = correct_answer.upper()
+                elif "选项" in correct_answer or correct_answer.startswith("选项"):
+                    # 尝试从 "选项A" 中提取 "A"
+                    for char in correct_answer:
+                        if char.isalpha():
+                            correct_answer = char.upper()
+                            break
+                else:
+                    # 默认取第一个字符
+                    correct_answer = str(correct_answer)[0].upper() if correct_answer else "A"
+            else:
+                correct_answer = "A"  # 默认答案
+            
+            # score 默认为 1
+            if score is None:
+                score = 1
+            else:
+                try:
+                    score = int(score)
+                except (ValueError, TypeError):
+                    score = 1
+
+            # 构建与原有接口完全一致的题目结构
+            normalized_questions.append(
+                {
+                    "id": f"q{idx}",  # 保持字符串格式以兼容前端（前端使用 q.id.toUpperCase()）
+                    "title": question_text,
+                    "options": options[:4],  # 确保只有 4 个选项
+                    "correctAnswer": correct_answer,
+                    "score": score,
+                }
+            )
+
+        if not normalized_questions:
+            raise ValueError("AI 生成的题目结构异常")
+
+        # 返回格式与原有接口对齐：使用 jobScript 字段名（与原有 script 字段对应）
+        result = {
+            "jobScript": script_text,
+            "questions": normalized_questions,
+        }
+        print(f"✅ [generate-job-test] 成功生成 {len(normalized_questions)} 道题目")
+        return result
+
+    except Exception as e:
+        # 统一转为前端友好的错误结构
+        import traceback
+        print(f"❌ [generate-job-test] 生成失败: {e}")
+        print(f"❌ [generate-job-test] 错误堆栈: {traceback.format_exc()}")
+        return JSONResponse(status_code=500, content={"code": 500, "msg": "AI生成失败，请稍后重试"})
 
 @app.post("/api/analyze-experiment")
 def analyze_experiment(req: AnalyzeExperimentRequest):
