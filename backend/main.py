@@ -9,25 +9,27 @@ from pydantic import BaseModel
 import uvicorn
 import json
 from typing import List
-import shutil # 👈 新增
+import shutil  # 👈 新增
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
 from openai import OpenAI
+from io import BytesIO
 
 # ==========================================
 # 导入数据库配置和操作函数
 # ==========================================
 from .db_config import (
-    get_db_connection, 
-    get_all_users, 
-    get_user_by_username, 
+    get_db_connection,
+    get_all_users,
+    get_user_by_username,
     user_login,
     update_user_field,
     update_user_multiple_fields,
     create_user,
     increment_user_field,
-    decrement_user_field
+    decrement_user_field,
 )
+
 app = FastAPI()
 
 os.makedirs("static/avatars", exist_ok=True)
@@ -36,30 +38,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
 if os.path.exists(frontend_dist):
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="frontend_assets")
-# --- 1. 跨域配置 (必不可少：支持自定义域名 + Cookie 登录) ---
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "")
 
-# 明确允许的前端域名（包含你的自定义域名）
-ORIGINS = [
-    # 本地开发
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    # 正式域名（根据需求可继续扩展）
-    "https://aicareerhelper.xyz",
-    "https://www.aicareerhelper.xyz",
-]
-
-if FRONTEND_ORIGIN and FRONTEND_ORIGIN not in ORIGINS:
-    ORIGINS.append(FRONTEND_ORIGIN)
-
+# --- 1. 跨域配置：按需开放，确保支持 OPTIONS/POST/GET 等所有方法 ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ORIGINS,
-    # 继续允许 Vercel 子域名（如有需要）
-    allow_origin_regex=r"^https://.*\.vercel\.app$",
-    # ✅ 登录需要携带 Cookie，必须开启 credentials
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["*"],  # 包含 OPTIONS / POST / GET
     allow_headers=["*"],
 )
 
@@ -103,6 +88,68 @@ def _deepseek_json(system_prompt: str, user_prompt: str) -> dict:
         return json.loads(content)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DeepSeek(JSON) 调用失败: {e}")
+
+
+def extract_text_from_file(upload_file: UploadFile) -> str:
+    """
+    从上传的文件中提取文本内容，支持 PDF / DOCX / TXT。
+    解析失败时抛出带有明确信息的 HTTPException，避免静默返回空内容。
+    """
+    try:
+        from PyPDF2 import PdfReader
+        from docx import Document
+    except ImportError as e:
+        # 依赖缺失时直接给出明确提示，方便在 Render 等环境排查
+        raise HTTPException(status_code=500, detail=f"服务器缺少文件解析依赖，请安装 PyPDF2 和 python-docx: {e}")
+
+    try:
+        file_content = upload_file.file.read()
+        file_name = (upload_file.filename or "").lower()
+
+        # 基本类型检查
+        if file_name.endswith(".pdf"):
+            try:
+                reader = PdfReader(BytesIO(file_content))
+                text_parts = []
+                for page in reader.pages:
+                    page_text = page.extract_text() or ""
+                    text_parts.append(page_text)
+                text = "\n".join(text_parts)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"PDF 解析失败: {str(e)}")
+
+        elif file_name.endswith(".docx"):
+            try:
+                doc = Document(BytesIO(file_content))
+                text = "\n".join([para.text for para in doc.paragraphs])
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"DOCX 解析失败: {str(e)}")
+
+        elif file_name.endswith(".txt"):
+            try:
+                text = file_content.decode("utf-8")
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"TXT 解码失败: {str(e)}")
+
+        else:
+            raise HTTPException(status_code=400, detail="不支持的文件格式，请上传 PDF/DOCX/TXT 文件。")
+
+        if not text or not text.strip():
+            raise HTTPException(status_code=400, detail="文件内容为空，请检查文件。")
+
+        return text
+    except HTTPException:
+        # 保持 HTTPException 语义，直接向上抛给接口处理
+        raise
+    except Exception as e:
+        # 兜底异常处理，确保不会静默失败
+        raise HTTPException(status_code=500, detail=f"文件解析失败: {str(e)}")
+    finally:
+        # 重置文件指针，避免影响后续操作
+        try:
+            upload_file.file.seek(0)
+        except Exception:
+            pass
 
 # ==========================================
 #  模型定义 (整合了所有功能的数据结构)
