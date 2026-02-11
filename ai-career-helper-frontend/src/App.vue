@@ -2034,22 +2034,65 @@ const aiQuantizeSandboxInputs = async () => {
   return { markdown, next }
 }
 
-// 点击「生成雷达图」：调用 AI 自动量化 -> 写回 radarValues -> 触发原有 watch/raf 渲染（雷达图视觉不变）
-const generateSandboxRadar = async () => {
-  try {
-    const { next } = await aiQuantizeSandboxInputs()
-    radarValues.gpa = next.gpa
-    radarValues.project = next.project
-    radarValues.intern = next.intern
-    radarValues.competition = next.competition
-    radarValues.english = next.english
-    radarValues.leader = next.leader
-    ElMessage.success('雷达图已更新')
-  } catch (e) {
-    console.error(e)
-    // 不再提示“格式不正确”，仅提示服务不可用；并保持旧雷达值不变
-    ElMessage.error('量化失败：请确认后端服务与 AI 接口可用')
+// 点击「生成雷达图/分析报告」：根据左侧输入直接映射数值 -> 更新 radarValues -> 触发雷达图重绘
+const generateSandboxRadar = () => {
+  // 读取输入
+  const rawGpa = parseFloat(sandboxForm.gpa) || 0
+  const leaderInput = parseInt(String(sandboxForm.leader || '').trim()) || 0
+  const englishInput = parseInt(String(sandboxForm.english || '').trim()) || 0
+  const competitionInput = String(sandboxForm.competition || '').trim()
+  const internInput = String(sandboxForm.intern || '').trim()
+  const projectInput = String(sandboxForm.project || '').trim()
+
+  // 帮助函数：从字符串中提取第一个整数
+  const extractInt = (v) => {
+    const m = String(v || '').match(/\d+/)
+    return m ? parseInt(m[0]) : 0
   }
+
+  // 1) GPA：如果是 0-4 分制，则按 4 分制映射到 0-100；否则视为 0-100 直接使用
+  let gpaScore
+  if (rawGpa > 0 && rawGpa <= 4) {
+    gpaScore = _clamp100(Math.round((rawGpa / 4) * 100))
+  } else {
+    gpaScore = _clamp100(rawGpa)
+  }
+
+  // 2) 领导协作：直接视为 0-100
+  const leadershipScore = _clamp100(leaderInput)
+
+  // 3) 英语能力：直接视为 0-100
+  const englishScore = _clamp100(englishInput)
+
+  // 4) 竞赛获奖：简单规则
+  let competitionScore = 0
+  if (!competitionInput) {
+    competitionScore = 0
+  } else if (competitionInput.includes('国')) {
+    competitionScore = 100
+  } else if (competitionInput.includes('省')) {
+    competitionScore = 80
+  } else {
+    competitionScore = 60
+  }
+
+  // 5) 实习经验：提取段数，每段 +30 分，最多 90 分
+  const internCount = extractInt(internInput)
+  const internshipScore = _clamp100(Math.min(internCount * 30, 90))
+
+  // 6) 项目实战：提取项目个数，每个 +10 分，最多 100 分
+  const projectCount = extractInt(projectInput)
+  const projectScore = _clamp100(Math.min(projectCount * 10, 100))
+
+  // 写回 radarValues（注意与 radar 维度顺序一一对应）
+  radarValues.gpa = gpaScore                     // 学业成绩 (GPA)
+  radarValues.project = projectScore             // 项目实战
+  radarValues.intern = internshipScore           // 实习经验
+  radarValues.competition = competitionScore     // 竞赛获奖
+  radarValues.english = englishScore             // 英语能力
+  radarValues.leader = leadershipScore           // 领导协作
+
+  ElMessage.success('雷达图已根据最新输入更新')
 }
 
 // 点击「生成AI分析报告」：复用项目现有 API_BASE + axios 调用方式，调用后端已有的 /api/analyze-experiment（返回 Markdown）
