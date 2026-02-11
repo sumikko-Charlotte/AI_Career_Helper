@@ -1965,65 +1965,91 @@ watch(radarValues, () => { scheduleSandboxUpdate() })
 // 竞争力沙盘：辅助函数（本地量化/限制分值）
 const _clamp100 = (n) => Math.max(0, Math.min(100, n))
 
-// 点击「生成雷达图/分析报告」：根据左侧输入直接映射数值 -> 更新 radarValues -> 触发雷达图重绘
-const generateSandboxRadar = () => {
-  // 读取输入
+// 本地量化规则（AI 降级或兜底使用）
+const quantizeSandboxLocally = () => {
   const rawGpa = parseFloat(sandboxForm.gpa) || 0
-  const leaderInput = parseInt(String(sandboxForm.leader || '').trim()) || 0
-  const englishInput = parseInt(String(sandboxForm.english || '').trim()) || 0
-  const competitionInput = String(sandboxForm.competition || '').trim()
-  const internInput = String(sandboxForm.intern || '').trim()
-  const projectInput = String(sandboxForm.project || '').trim()
+  const projectCount = parseInt(String(sandboxForm.project || '').match(/\d+/)?.[0] || '0')
+  const internCount = parseInt(String(sandboxForm.intern || '').match(/\d+/)?.[0] || '0')
+  const competition = String(sandboxForm.competition || '')
+  const englishScore = parseInt(String(sandboxForm.english || '').trim()) || 0
+  const leaderScore = parseInt(String(sandboxForm.leader || '').trim()) || 0
 
-  // 帮助函数：从字符串中提取第一个整数
-  const extractInt = (v) => {
-    const m = String(v || '').match(/\d+/)
-    return m ? parseInt(m[0]) : 0
-  }
-
-  // 1) GPA：如果是 0-4 分制，则按 4 分制映射到 0-100；否则视为 0-100 直接使用
-  let gpaScore
-  if (rawGpa > 0 && rawGpa <= 4) {
-    gpaScore = _clamp100(Math.round((rawGpa / 4) * 100))
-  } else {
-    gpaScore = _clamp100(rawGpa)
-  }
-
-  // 2) 领导协作：直接视为 0-100
-  const leadershipScore = _clamp100(leaderInput)
-
-  // 3) 英语能力：直接视为 0-100
-  const englishScore = _clamp100(englishInput)
-
-  // 4) 竞赛获奖：简单规则
-  let competitionScore = 0
-  if (!competitionInput) {
-    competitionScore = 0
-  } else if (competitionInput.includes('国')) {
-    competitionScore = 100
-  } else if (competitionInput.includes('省')) {
-    competitionScore = 80
-  } else {
-    competitionScore = 60
-  }
-
-  // 5) 实习经验：提取段数，每段 +30 分，最多 90 分
-  const internCount = extractInt(internInput)
-  const internshipScore = _clamp100(Math.min(internCount * 30, 90))
-
-  // 6) 项目实战：提取项目个数，每个 +10 分，最多 100 分
-  const projectCount = extractInt(projectInput)
+  const gpaScore =
+    rawGpa > 0 && rawGpa <= 4
+      ? _clamp100(Math.round((rawGpa / 4) * 100))
+      : _clamp100(rawGpa)
   const projectScore = _clamp100(Math.min(projectCount * 10, 100))
+  const internScore = _clamp100(Math.min(internCount * 30, 90))
+  const competitionScore = !competition
+    ? 0
+    : competition.includes('国')
+      ? 100
+      : competition.includes('省')
+        ? 80
+        : 60
+  const finalEnglishScore = _clamp100(englishScore)
+  const finalLeaderScore = _clamp100(leaderScore)
 
-  // 写回 radarValues（注意与 radar 维度顺序一一对应）
-  radarValues.gpa = gpaScore                     // 学业成绩 (GPA)
-  radarValues.project = projectScore             // 项目实战
-  radarValues.intern = internshipScore           // 实习经验
-  radarValues.competition = competitionScore     // 竞赛获奖
-  radarValues.english = englishScore             // 英语能力
-  radarValues.leader = leadershipScore           // 领导协作
+  radarValues.gpa = gpaScore
+  radarValues.project = projectScore
+  radarValues.intern = internScore
+  radarValues.competition = competitionScore
+  radarValues.english = finalEnglishScore
+  radarValues.leader = finalLeaderScore
+}
 
-  ElMessage.success('雷达图已根据最新输入更新')
+// 点击「生成雷达图」：优先调用后端 AI 进行自然语言量化，失败时降级为本地规则
+const generateSandboxRadar = async () => {
+  const hasInput = sandboxForm.gpa || sandboxForm.project || sandboxForm.intern ||
+                   sandboxForm.competition || sandboxForm.english || sandboxForm.leader
+  if (!hasInput) {
+    return ElMessage.warning('请先填写左侧 6 项参数（支持自然语言描述）')
+  }
+
+  // 拼接自然语言总述，交给后端 AI 分析
+  const nlText = [
+    sandboxForm.gpa && `GPA/成绩：${sandboxForm.gpa}`,
+    sandboxForm.project && `项目实战经验：${sandboxForm.project}`,
+    sandboxForm.intern && `名企实习经历：${sandboxForm.intern}`,
+    sandboxForm.competition && `竞赛获奖情况：${sandboxForm.competition}`,
+    sandboxForm.english && `英语学术能力：${sandboxForm.english}`,
+    sandboxForm.leader && `领导力与协作：${sandboxForm.leader}`
+  ].filter(Boolean).join('；')
+
+  try {
+    const baseUrl = API_BASE || 'https://ai-career-helper-backend-u1s0.onrender.com'
+    const res = await axios.post(`${baseUrl}/api/analyze_natural_language`, {
+      text: nlText
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 30000
+    })
+
+    const data = res?.data || {}
+    const scores = data.scores || {}
+
+    if (data.success && scores) {
+      radarValues.gpa = _clamp100(scores.gpa ?? radarValues.gpa)
+      radarValues.project = _clamp100(scores.project ?? radarValues.project)
+      radarValues.intern = _clamp100(scores.intern ?? radarValues.intern)
+      radarValues.competition = _clamp100(scores.competition ?? radarValues.competition)
+      radarValues.english = _clamp100(scores.english ?? radarValues.english)
+      radarValues.leader = _clamp100(scores.leader ?? radarValues.leader)
+
+      ElMessage.success(`雷达图已根据 AI 识别结果更新${data.fallback ? '（降级模式）' : ''}`)
+      return
+    }
+
+    // AI 返回结构异常时，走本地量化
+    console.warn('[generateSandboxRadar] AI 返回结构异常，使用本地量化规则')
+    quantizeSandboxLocally()
+    ElMessage.warning('AI 量化结果异常，已使用本地规则估算')
+  } catch (e) {
+    console.error('❌ [generateSandboxRadar] /api/analyze_natural_language 调用失败:', e)
+    // 网络/后端失败时，使用本地量化规则兜底
+    quantizeSandboxLocally()
+    ElMessage.warning('AI 量化失败，已使用本地规则估算')
+  }
 }
 
 // 点击「生成AI分析报告」：调用后端 /api/analyze-experiment 接口，基于量化后的 radarValues 生成 Markdown 报告
