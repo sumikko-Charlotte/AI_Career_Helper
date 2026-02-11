@@ -5,3 +5,5 @@ python-dotenv
 requests
 openai
 python-multipart
+PyPDF2>=3.0.0
+python-docx>=0.8.11

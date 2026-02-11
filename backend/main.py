@@ -108,45 +108,54 @@ def _deepseek_json(system_prompt: str, user_prompt: str) -> dict:
 # ==========================================
 #  简历文件解析函数
 # ==========================================
-def extract_text_from_file(file: UploadFile) -> str:
-    """
-    从上传的文件中提取文本内容
-    支持格式：PDF、DOCX、TXT
-    """
-    file_extension = os.path.splitext(file.filename or "")[1].lower()
-    content = file.file.read()
-    file.file.seek(0)  # 重置文件指针
-    
+def extract_text_from_file(upload_file: UploadFile) -> str:
+    """从上传的文件中提取文本内容"""
+    import PyPDF2
+    from docx import Document
+    from io import BytesIO
+
     try:
-        if file_extension == ".pdf":
-            if not PDF_SUPPORT:
-                raise ValueError("PDF 解析功能不可用，请安装 PyPDF2: pip install PyPDF2")
-            pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
-            text = ""
-            for page in pdf_reader.pages:
-                text += page.extract_text() + "\n"
-            print(f"✅ [extract_text_from_file] PDF 文件解析成功，提取 {len(text)} 字符")
-            return text.strip()
-        
-        elif file_extension == ".docx":
-            if not DOCX_SUPPORT:
-                raise ValueError("DOCX 解析功能不可用，请安装 python-docx: pip install python-docx")
-            doc = Document(io.BytesIO(content))
-            text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
-            print(f"✅ [extract_text_from_file] DOCX 文件解析成功，提取 {len(text)} 字符")
-            return text.strip()
-        
-        elif file_extension == ".txt":
-            text = content.decode("utf-8", errors="ignore")
-            print(f"✅ [extract_text_from_file] TXT 文件解析成功，提取 {len(text)} 字符")
-            return text.strip()
-        
+        # 读取文件内容
+        file_content = upload_file.file.read()
+        file_name = upload_file.filename.lower() if upload_file.filename else ""
+
+        # 根据文件类型解析内容
+        if file_name.endswith(".pdf"):
+            reader = PyPDF2.PdfReader(BytesIO(file_content))
+            text_parts = []
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text_parts.append(page_text)
+            text = "\n".join(text_parts)
+        elif file_name.endswith(".docx"):
+            doc = Document(BytesIO(file_content))
+            text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
+        elif file_name.endswith(".txt"):
+            try:
+                text = file_content.decode("utf-8")
+            except UnicodeDecodeError:
+                text = file_content.decode("gbk")  # 兼容中文编码
         else:
-            raise ValueError(f"不支持的文件格式: {file_extension}，仅支持 .pdf, .docx, .txt")
-    
+            raise HTTPException(status_code=400, detail="不支持的文件格式，请上传 PDF/DOCX/TXT 文件。")
+
+        # 检查解析后的内容是否为空
+        if not text or not text.strip():
+            raise HTTPException(status_code=400, detail="文件内容为空，或无法从文件中提取有效文本。")
+
+        return text.strip()
+
+    except HTTPException:
+        # 直接向上抛出，让 /api/analyze_resume 返回对应的 400 提示
+        raise
     except Exception as e:
-        print(f"❌ [extract_text_from_file] 文件解析失败: {e}")
-        raise HTTPException(status_code=400, detail=f"文件解析失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"文件解析失败: {str(e)}")
+    finally:
+        # 重置文件指针，以便后续操作
+        try:
+            upload_file.file.seek(0)
+        except Exception:
+            pass
 
 # ==========================================
 #  模型定义 (整合了所有功能的数据结构)
