@@ -1,8 +1,8 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { User, Message, Iphone, Edit, Upload } from '@element-plus/icons-vue'
+import { getUserProfile, updateUserProfile, uploadAvatar, changePassword } from '@/api/user'
 
 const loading = ref(false)
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
@@ -38,20 +38,25 @@ const stats = reactive({
 
 // 加载资料
 const fetchProfile = async () => {
+  // 从 localStorage 获取登录时的用户名（与登录/注册同步）
   const currentUser = localStorage.getItem('remembered_username')
   if (!currentUser) return
-  form.username = currentUser 
+  
+  // 姓名字段：直接使用登录时的用户名，不可编辑，与登录/注册同步
+  form.username = currentUser
 
   try {
-    const res = await axios.get(`${API_BASE}/api/user/profile`, {
-      params: { username: currentUser }
-    })
+    const res = await getUserProfile(currentUser)
     if (res.data.success && res.data.data) {
-      Object.assign(form, res.data.data)
-      form.username = currentUser 
+      // 合并其他字段，但保持 username 不变（确保与登录信息同步）
+      const { username, ...otherData } = res.data.data
+      Object.assign(form, otherData)
+      // 始终使用登录时的用户名，不从 API 覆盖
+      form.username = currentUser
     }
   } catch (error) {
-    console.error(error)
+    console.error('[UserProfile] 获取用户资料失败:', error)
+    ElMessage.warning('获取用户资料失败，请稍后重试')
   }
 }
 
@@ -59,10 +64,46 @@ const fetchProfile = async () => {
 const handleSave = async () => {
   loading.value = true
   try {
-    const res = await axios.post(`${API_BASE}/api/user/profile`, form)
-    if (res.data.success) ElMessage.success('保存成功！')
+    // 保存时，确保 username 使用登录时的用户名（不可修改）
+    const currentUser = localStorage.getItem('remembered_username')
+    if (!currentUser) {
+      return ElMessage.warning('请先登录')
+    }
+    
+    // 只保存可编辑的字段：邮箱、手机号、城市、偏好设置等
+    const saveData = {
+      username: currentUser, // 强制使用登录时的用户名，防止被修改
+      email: form.email || '',
+      phone: form.phone || '',
+      city: form.city || '',
+      style: form.style || '专业正式',
+      file_format: form.file_format || 'PDF',
+      notify: form.notify ?? true,
+      auto_save: form.auto_save ?? true,
+      avatar: form.avatar || '' // 保留头像URL
+    }
+    
+    const res = await updateUserProfile(saveData)
+    if (res.data.success) {
+      ElMessage.success('保存成功！')
+      // 保存成功后，重新获取最新数据（确保数据同步）
+      await fetchProfile()
+    } else {
+      ElMessage.error(res.data.message || '保存失败')
+    }
   } catch (error) {
-    ElMessage.error('保存失败')
+    console.error('[UserProfile] 保存失败:', error)
+    if (error.response) {
+      if (error.response.status === 400) {
+        ElMessage.error(error.response.data?.message || '参数错误，请检查输入')
+      } else if (error.response.status === 401) {
+        ElMessage.error('未授权，请重新登录')
+      } else {
+        ElMessage.error(error.response.data?.message || '保存失败，请稍后重试')
+      }
+    } else {
+      ElMessage.error('网络错误，请检查网络连接')
+    }
   } finally {
     loading.value = false
   }
@@ -77,18 +118,49 @@ const handleFileChange = async (e) => {
   const file = e.target.files[0]
   if (!file) return
 
+  // 验证文件类型
+  if (!file.type.startsWith('image/')) {
+    return ElMessage.warning('请选择图片文件')
+  }
+
+  // 验证文件大小（限制 5MB）
+  if (file.size > 5 * 1024 * 1024) {
+    return ElMessage.warning('图片大小不能超过 5MB')
+  }
+
   const formData = new FormData()
-  formData.append('file', file)
+  formData.append('avatar', file) // 字段名改为 avatar，与后端保持一致
+  formData.append('username', form.username) // 传递用户名
 
   try {
-    const res = await axios.post(`${API_BASE}/api/user/upload_avatar`, formData)
+    const res = await uploadAvatar(formData)
     if (res.data.success) {
-      form.avatar = res.data.url // 更新头像显示
-      handleSave() // 自动保存一下 URL 到资料里
+      // 更新头像显示
+      form.avatar = res.data.avatar_url || res.data.url || res.data.avatar
+      // 自动保存头像URL到用户资料
+      await handleSave()
       ElMessage.success('头像更新成功')
+    } else {
+      ElMessage.error(res.data.message || '头像上传失败')
     }
   } catch (error) {
-    ElMessage.error('头像上传失败')
+    console.error('[UserProfile] 头像上传失败:', error)
+    if (error.response) {
+      if (error.response.status === 400) {
+        ElMessage.error(error.response.data?.message || '文件格式不支持')
+      } else if (error.response.status === 413) {
+        ElMessage.error('文件过大，请选择小于 5MB 的图片')
+      } else {
+        ElMessage.error(error.response.data?.message || '头像上传失败')
+      }
+    } else {
+      ElMessage.error('网络错误，请检查网络连接')
+    }
+  } finally {
+    // 清空文件输入，允许重复选择同一文件
+    if (fileInput.value) {
+      fileInput.value.value = ''
+    }
   }
 }
 
@@ -101,16 +173,28 @@ const openPwdDialog = () => {
 }
 
 const submitPasswordChange = async () => {
-  if (!pwdForm.old_password || !pwdForm.new_password) {
-    return ElMessage.warning('请填写完整')
+  // 验证输入
+  if (!pwdForm.old_password || !pwdForm.new_password || !pwdForm.confirm_password) {
+    return ElMessage.warning('请填写完整信息')
   }
+  
   if (pwdForm.new_password !== pwdForm.confirm_password) {
     return ElMessage.warning('两次新密码输入不一致')
   }
 
+  // 验证新密码长度
+  if (pwdForm.new_password.length < 6) {
+    return ElMessage.warning('新密码长度至少为 6 位')
+  }
+
+  const currentUser = localStorage.getItem('remembered_username')
+  if (!currentUser) {
+    return ElMessage.warning('请先登录')
+  }
+
   try {
-    const res = await axios.post(`${API_BASE}/api/user/change_password`, {
-      username: form.username,
+    const res = await changePassword({
+      username: currentUser,
       old_password: pwdForm.old_password,
       new_password: pwdForm.new_password
     })
@@ -118,13 +202,29 @@ const submitPasswordChange = async () => {
     if (res.data.success) {
       ElMessage.success('密码修改成功，请重新登录')
       pwdDialogVisible.value = false
-      // 可选：退出登录逻辑
-      // localStorage.clear(); location.reload();
+      // 清空表单
+      pwdForm.old_password = ''
+      pwdForm.new_password = ''
+      pwdForm.confirm_password = ''
+      // 可选：退出登录逻辑（如果需要）
+      // localStorage.clear()
+      // window.location.href = '/login'
     } else {
-      ElMessage.error(res.data.message)
+      ElMessage.error(res.data.message || '密码修改失败')
     }
   } catch (error) {
-    ElMessage.error('请求失败')
+    console.error('[UserProfile] 密码修改失败:', error)
+    if (error.response) {
+      if (error.response.status === 400) {
+        ElMessage.error(error.response.data?.message || '旧密码不正确或参数错误')
+      } else if (error.response.status === 401) {
+        ElMessage.error('未授权，请重新登录')
+      } else {
+        ElMessage.error(error.response.data?.message || '密码修改失败，请稍后重试')
+      }
+    } else {
+      ElMessage.error('网络错误，请检查网络连接')
+    }
   }
 }
 
@@ -146,7 +246,7 @@ onMounted(() => fetchProfile())
             <el-row :gutter="20">
               <el-col :span="12">
                 <el-form-item label="姓名">
-                  <el-input v-model="form.username" disabled :prefix-icon="User" />
+                  <el-input v-model="form.username" readonly :prefix-icon="User" />
                 </el-form-item>
               </el-col>
               <el-col :span="12">
@@ -296,4 +396,15 @@ onMounted(() => fetchProfile())
 .save-btn { width: 100%; margin-top: 15px; font-weight: bold; }
 .logout-btn { width: 100%; margin-top: 10px; margin-left: 0; }
 .switches { display: flex; gap: 15px; margin-top: 10px; }
+
+/* 只读输入框样式：灰色背景，表示不可编辑 */
+:deep(.el-input.is-readonly) {
+  background-color: #f5f7fa;
+  cursor: not-allowed;
+}
+:deep(.el-input.is-readonly .el-input__inner) {
+  background-color: #f5f7fa;
+  color: #909399;
+  cursor: not-allowed;
+}
 </style>

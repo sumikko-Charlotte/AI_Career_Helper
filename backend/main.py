@@ -931,45 +931,103 @@ def get_profile(username: str):
     # 没找到也返回默认
     return {"success": True, "data": {"username": username}}
 
-# --- 3. 更新用户资料接口 ---
-@app.post("/api/user/profile")
+# --- 3. 更新用户资料接口（支持 PUT 和 POST，推荐使用 PUT） ---
+@app.put("/api/user/profile")
+@app.post("/api/user/profile")  # 保留 POST 以兼容旧代码
 def update_profile(profile: UserProfile):
+    """
+    更新用户资料接口
+    
+    接收邮箱、手机号、城市等字段，更新到 CSV 文件和数据库
+    注意：username 字段不可修改，仅用于标识用户
+    """
+    import traceback
+    
+    username = profile.username
+    if not username:
+        raise HTTPException(status_code=400, detail="用户名不能为空")
+    
+    # 验证用户是否存在（从数据库验证）
+    user = get_user_by_username(username)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    print(f"✅ [update_profile] 收到更新请求，用户: {username}")
+    
+    # 1. 更新 CSV 文件（保留原有逻辑，用于兼容）
     file_path = "data/profiles.csv"
     os.makedirs("data", exist_ok=True)
     
-    # 读取所有现存资料
     profiles = []
     if os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             profiles = list(reader)
     
-    # 查找并更新，或者新增
     updated = False
     for row in profiles:
-        if row.get('username') == profile.username:
-            row.update(profile.dict()) # 更新字段 (这里会自动包含 avatar)
-            # 把布尔值转回字符串存CSV
+        if row.get('username') == username:
+            # 更新字段，但不允许修改 username
+            row['avatar'] = profile.avatar or ''
+            row['email'] = profile.email or ''
+            row['phone'] = profile.phone or ''
+            row['city'] = profile.city or ''
+            row['style'] = profile.style or '专业正式'
+            row['file_format'] = profile.file_format or 'PDF'
             row['notify'] = str(profile.notify)
             row['auto_save'] = str(profile.auto_save)
             updated = True
             break
     
     if not updated:
-        # 新增一条
-        new_row = profile.dict()
-        new_row['notify'] = str(profile.notify)
-        new_row['auto_save'] = str(profile.auto_save)
+        new_row = {
+            'username': username,
+            'avatar': profile.avatar or '',
+            'email': profile.email or '',
+            'phone': profile.phone or '',
+            'city': profile.city or '',
+            'style': profile.style or '专业正式',
+            'file_format': profile.file_format or 'PDF',
+            'notify': str(profile.notify),
+            'auto_save': str(profile.auto_save)
+        }
         profiles.append(new_row)
     
-    # 写回文件
-    with open(file_path, "w", encoding="utf-8-sig", newline="") as f:
-        # 👇 关键修改点：在列表里加入了 "avatar"
-        fieldnames = ["username", "avatar", "email", "phone", "city", "style", "file_format", "notify", "auto_save"]
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(profiles)
+    # 写回 CSV 文件
+    try:
+        with open(file_path, "w", encoding="utf-8-sig", newline="") as f:
+            fieldnames = ["username", "avatar", "email", "phone", "city", "style", "file_format", "notify", "auto_save"]
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(profiles)
+        print(f"✅ [update_profile] CSV 文件更新成功")
+    except Exception as e:
+        print(f"⚠️ [update_profile] CSV 文件更新失败: {e}")
+    
+    # 2. 更新数据库（如果数据库有对应字段）
+    try:
+        # 使用 update_user_multiple_fields 更新数据库
+        db_fields = {}
+        if profile.email:
+            db_fields['email'] = profile.email
+        if profile.phone:
+            db_fields['phone'] = profile.phone
+        if profile.city:
+            db_fields['city'] = profile.city
+        if profile.avatar:
+            db_fields['avatar'] = profile.avatar
         
+        if db_fields:
+            success = update_user_multiple_fields(username, db_fields)
+            if success:
+                print(f"✅ [update_profile] 数据库更新成功: {db_fields}")
+            else:
+                print(f"⚠️ [update_profile] 数据库更新失败（可能字段不存在）")
+    except Exception as e:
+        print(f"⚠️ [update_profile] 数据库更新异常: {e}")
+        print(f"⚠️ [update_profile] 错误堆栈: {traceback.format_exc()}")
+        # 数据库更新失败不影响 CSV 保存，继续返回成功
+    
     return {"success": True, "message": "资料已保存"}
 # ==========================================
 #  核心功能 F: 简历医生 (诊断 + 生成)
@@ -995,35 +1053,173 @@ class ChangePwdRequest(BaseModel):
     old_password: str
     new_password: str
 
-@app.post("/api/user/change_password")
+@app.post("/api/user/change-password")
 def change_password(req: ChangePwdRequest):
-    # 1. 验证旧密码（使用数据库）
+    """
+    修改密码接口
+    
+    验证旧密码，更新为新密码
+    注意：当前使用明文存储，未来可升级为哈希存储
+    """
+    import traceback
+    
+    print(f"✅ [change_password] 收到密码修改请求，用户: {req.username}")
+    
+    # 1. 验证用户是否存在
     user = get_user_by_username(req.username)
     if not user:
-        return {"success": False, "message": "用户不存在"}
+        raise HTTPException(status_code=404, detail="用户不存在")
     
-    if user.get('password', '').strip() != req.old_password:
-        return {"success": False, "message": "旧密码不正确"}
+    # 2. 验证旧密码
+    stored_password = user.get('password', '').strip()
+    if stored_password != req.old_password:
+        print(f"❌ [change_password] 旧密码验证失败")
+        raise HTTPException(status_code=400, detail="旧密码不正确")
     
-    # 2. 更新数据库密码
-    success = update_user_field(req.username, "password", req.new_password)
-    if success:
-        return {"success": True, "message": "密码修改成功"}
-    else:
-        return {"success": False, "message": "密码更新失败"}
+    # 3. 验证新密码长度
+    if len(req.new_password) < 6:
+        raise HTTPException(status_code=400, detail="新密码长度至少为 6 位")
+    
+    # 4. 验证新旧密码不能相同
+    if req.old_password == req.new_password:
+        raise HTTPException(status_code=400, detail="新密码不能与旧密码相同")
+    
+    # 5. 更新数据库密码
+    # 注意：当前使用明文存储，未来可升级为哈希存储（使用 bcrypt 或 passlib）
+    try:
+        success = update_user_field(req.username, "password", req.new_password)
+        if success:
+            print(f"✅ [change_password] 密码更新成功")
+            return {"success": True, "message": "密码修改成功"}
+        else:
+            print(f"❌ [change_password] 密码更新失败")
+            raise HTTPException(status_code=500, detail="密码更新失败")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ [change_password] 密码更新异常: {e}")
+        print(f"❌ [change_password] 错误堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"密码更新失败: {str(e)}")
 
 # --- 5. 上传头像接口 ---
-@app.post("/api/user/upload_avatar")
-async def upload_avatar(file: UploadFile = File(...)):
-    # 生成一个文件名，避免冲突
-    file_path = f"static/avatars/{file.filename}"
+@app.post("/api/user/avatar")
+async def upload_avatar(
+    avatar: UploadFile = File(...),
+    username: str = Form(...)
+):
+    """
+    上传用户头像接口
     
-    # 保存文件到本地
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    接收图片文件，保存到服务器，返回可访问的 URL
+    同时更新数据库和 CSV 文件中的 avatar 字段
+    """
+    import traceback
+    import uuid
+    from datetime import datetime
     
-    # 返回可访问的 URL
-    return {"success": True, "url": f"http://127.0.0.1:8000/{file_path}"}
+    print(f"✅ [upload_avatar] 收到头像上传请求，用户: {username}, 文件名: {avatar.filename}")
+    
+    # 1. 验证用户是否存在
+    user = get_user_by_username(username)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    # 2. 验证文件类型
+    if not avatar.filename:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+    
+    file_ext = os.path.splitext(avatar.filename)[1].lower()
+    allowed_exts = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+    if file_ext not in allowed_exts:
+        raise HTTPException(status_code=400, detail=f"不支持的文件格式，仅支持: {', '.join(allowed_exts)}")
+    
+    # 3. 验证文件大小（限制 5MB）
+    file_content = await avatar.read()
+    if len(file_content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="文件大小不能超过 5MB")
+    
+    # 4. 生成唯一文件名（避免冲突）
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_id = str(uuid.uuid4())[:8]
+    safe_filename = f"{username}_{timestamp}_{unique_id}{file_ext}"
+    file_path = os.path.join("static", "avatars", safe_filename)
+    
+    # 确保目录存在
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    
+    # 5. 保存文件
+    try:
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_content)
+        print(f"✅ [upload_avatar] 文件保存成功: {file_path}")
+    except Exception as e:
+        print(f"❌ [upload_avatar] 文件保存失败: {e}")
+        raise HTTPException(status_code=500, detail=f"文件保存失败: {str(e)}")
+    
+    # 6. 生成可访问的 URL
+    # 根据部署环境生成 URL（本地开发 vs 生产环境）
+    base_url = os.getenv("BASE_URL", "https://ai-career-helper-backend-u1s0.onrender.com")
+    avatar_url = f"{base_url}/static/avatars/{safe_filename}"
+    
+    # 7. 更新数据库中的 avatar 字段
+    try:
+        success = update_user_field(username, "avatar", avatar_url)
+        if success:
+            print(f"✅ [upload_avatar] 数据库 avatar 字段更新成功")
+        else:
+            print(f"⚠️ [upload_avatar] 数据库 avatar 字段更新失败（可能字段不存在）")
+    except Exception as e:
+        print(f"⚠️ [upload_avatar] 数据库更新异常: {e}")
+        print(f"⚠️ [upload_avatar] 错误堆栈: {traceback.format_exc()}")
+        # 数据库更新失败不影响文件上传，继续返回成功
+    
+    # 8. 更新 CSV 文件中的 avatar 字段（保持兼容）
+    try:
+        csv_path = "data/profiles.csv"
+        if os.path.exists(csv_path):
+            profiles = []
+            with open(csv_path, "r", encoding="utf-8-sig") as f:
+                reader = csv.DictReader(f)
+                profiles = list(reader)
+            
+            updated = False
+            for row in profiles:
+                if row.get('username') == username:
+                    row['avatar'] = avatar_url
+                    updated = True
+                    break
+            
+            if not updated:
+                # 如果用户资料不存在，创建新记录
+                profiles.append({
+                    'username': username,
+                    'avatar': avatar_url,
+                    'email': '',
+                    'phone': '',
+                    'city': '',
+                    'style': '专业正式',
+                    'file_format': 'PDF',
+                    'notify': 'True',
+                    'auto_save': 'True'
+                })
+            
+            with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
+                fieldnames = ["username", "avatar", "email", "phone", "city", "style", "file_format", "notify", "auto_save"]
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(profiles)
+            print(f"✅ [upload_avatar] CSV 文件 avatar 字段更新成功")
+    except Exception as e:
+        print(f"⚠️ [upload_avatar] CSV 文件更新异常: {e}")
+        # CSV 更新失败不影响主流程
+    
+    return {
+        "success": True,
+        "avatar_url": avatar_url,
+        "avatar": avatar_url,  # 兼容字段名
+        "url": avatar_url,  # 兼容字段名
+        "message": "头像上传成功"
+    }
 @app.post("/api/resume/generate")
 def generate_resume(req: GenerateResumeRequest):
     time.sleep(1.5)
