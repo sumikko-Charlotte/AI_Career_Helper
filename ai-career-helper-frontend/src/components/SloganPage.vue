@@ -116,22 +116,22 @@ const router = useRouter()
     color: #FFFFFF;
   }
   
-  /* Slogan 图片样式：使用混合模式让白色背景透明，与蓝色背景融合 */
+  /* Slogan 图片样式：让白色背景透明，文字变白色清晰可见 */
   .slogan-image {
     max-width: 80%;
     height: auto;
     margin: 0 auto 10px; /* 减少底部间距，让文字更靠近 */
     display: block;
-    /* 使用混合模式让白色背景透明，只保留有颜色的部分 */
-    mix-blend-mode: multiply;
-    /* 或者使用 screen 模式，根据图片效果选择 */
-    /* mix-blend-mode: screen; */
+    /* 使用 screen 混合模式：让白色背景透明，深色文字变亮（接近白色） */
+    mix-blend-mode: screen;
+    /* 增强对比度，让文字更清晰 */
+    filter: contrast(1.1) brightness(1.1);
     transition: all 0.3s ease;
   }
 
   .slogan-image:hover {
     transform: scale(1.02);
-    filter: brightness(1.05);
+    filter: contrast(1.15) brightness(1.15);
   }
 
   /* 保留原有 .slogan 类名样式（兼容性） */
