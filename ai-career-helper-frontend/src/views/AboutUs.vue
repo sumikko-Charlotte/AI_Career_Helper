@@ -5,6 +5,14 @@
       <el-button type="link" @click="$router.go(-1)" style="margin-bottom: 20px; color: #165DFF;">
         ← 回到上一页
       </el-button>
+      <!-- Slogan 图片 -->
+      <div style="text-align: center; margin: 20px 0 30px;">
+        <img 
+          src="/images/slogan-main_深色.png" 
+          alt="职航——AI辅助的大学生生涯成长平台" 
+          class="slogan-image"
+        >
+      </div>
       <!-- 关于我们核心内容 -->
       <h1 style="text-align: center; margin: 20px 0 40px; color: #165DFF; font-size: 28px; font-weight: 600;">关于我们</h1>
       
@@ -85,8 +93,19 @@ p {
 ul li {
   margin: 8px 0;
 }
+/* Slogan 图片样式 */
+.slogan-image {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
 /* 适配小屏幕/移动端 */
 @media (max-width: 768px) {
+  .slogan-image {
+    max-width: 90%;
+  }
   h1 {
     font-size: 24px !important;
   }
