@@ -1015,15 +1015,52 @@ def change_password(req: ChangePwdRequest):
 # --- 5. 上传头像接口 ---
 @app.post("/api/user/upload_avatar")
 async def upload_avatar(file: UploadFile = File(...)):
-    # 生成一个文件名，避免冲突
-    file_path = f"static/avatars/{file.filename}"
+    import uuid
+    from datetime import datetime
     
-    # 保存文件到本地
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    if not file.filename:
+        return {"success": False, "message": "文件名不能为空"}
     
-    # 返回可访问的 URL
-    return {"success": True, "url": f"http://127.0.0.1:8000/{file_path}"}
+    # 验证文件类型
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    allowed_exts = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+    if file_ext not in allowed_exts:
+        return {"success": False, "message": f"不支持的文件格式，仅支持: {', '.join(allowed_exts)}"}
+    
+    # 读取文件内容
+    file_content = await file.read()
+    
+    # 验证文件大小（限制 5MB）
+    if len(file_content) > 5 * 1024 * 1024:
+        return {"success": False, "message": "文件大小不能超过 5MB"}
+    
+    # 生成唯一文件名（避免冲突）
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_id = str(uuid.uuid4())[:8]
+    safe_filename = f"{timestamp}_{unique_id}{file_ext}"
+    file_path = os.path.join("static", "avatars", safe_filename)
+    
+    # 确保目录存在
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    
+    # 保存文件
+    try:
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_content)
+    except Exception as e:
+        return {"success": False, "message": f"文件保存失败: {str(e)}"}
+    
+    # 生成可访问的 URL（根据部署环境）
+    base_url = os.getenv("BASE_URL", "https://ai-career-helper-backend-u1s0.onrender.com")
+    avatar_url = f"{base_url}/static/avatars/{safe_filename}"
+    
+    return {
+        "success": True,
+        "url": avatar_url,
+        "avatar_url": avatar_url,  # 兼容字段名
+        "avatar": avatar_url,  # 兼容字段名
+        "message": "头像上传成功"
+    }
 @app.post("/api/resume/generate")
 def generate_resume(req: GenerateResumeRequest):
     time.sleep(1.5)
