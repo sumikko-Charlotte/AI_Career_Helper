@@ -24,6 +24,7 @@ import HistoryRecord from './components/HistoryRecord.vue'
 import ResumeTemplates from './components/ResumeTemplates.vue'
 import VirtualExperiment from './components/VirtualExperiment.vue'
 import CareerExperience from './components/CareerExperience.vue'
+import ExploreGuide from './views/ExploreGuide.vue'
 const md = new MarkdownIt()
 
 const router = useRouter()
@@ -2367,7 +2368,7 @@ onBeforeUnmount(() => {
   active-text-color="#ffffff"
   @select="handleSelect"
 >
-  <el-menu-item index="explore" @click="goExplore">
+  <el-menu-item index="explore">
     <el-icon><Compass /></el-icon>
     <span>功能导航</span>
   </el-menu-item>
@@ -2446,6 +2447,7 @@ onBeforeUnmount(() => {
           <div class="topbar-left">
             <div class="topbar-title">
   {{
+    activeMenu === 'explore' ? '功能导航 · 新手指引' :
     activeMenu === '0' ? '生涯路径规划' :
     activeMenu === '1' ? 'AI 简历医生' :
     activeMenu === '2' ? '模拟面试' :
@@ -2468,6 +2470,11 @@ onBeforeUnmount(() => {
         </el-header>
   
         <el-main class="page">
+          <!-- 功能导航 · 新手指引（在主区域右侧显示过渡页） -->
+          <div v-if="activeMenu === 'explore'" class="animate-fade">
+            <ExploreGuide />
+          </div>
+
           <!-- 功能 0：生涯路径规划 -->
           <div v-if="activeMenu === '0'" class="animate-fade">
   <div class="page-header">
