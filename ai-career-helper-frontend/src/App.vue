@@ -2367,6 +2367,11 @@ onBeforeUnmount(() => {
   active-text-color="#ffffff"
   @select="handleSelect"
 >
+  <el-menu-item index="explore" @click="goExplore">
+    <el-icon><Compass /></el-icon>
+    <span>功能导航</span>
+  </el-menu-item>
+  
   <el-menu-item index="0">
     <el-icon><Calendar /></el-icon>
     <span>生涯路径规划</span>
