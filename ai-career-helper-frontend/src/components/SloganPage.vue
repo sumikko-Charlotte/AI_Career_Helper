@@ -17,7 +17,7 @@
 
     <!-- 右侧主内容区 -->
     <div class="main-content">
-      <img src="/images/slogan-main.png" alt="职航——AI辅助的大学生生涯成长平台" class="slogan-image" />
+      <img src="/images/slogan-main_浅色.png" alt="职航——AI辅助的大学生生涯成长平台" class="slogan-image" />
       <p class="sub-slogan">发现你的无限可能</p>
       <button class="start-btn" @click="goToRegister">开始探索</button>
     </div>
@@ -116,20 +116,22 @@ const router = useRouter()
     color: #FFFFFF;
   }
   
-  /* Slogan 图片样式：确保在深色背景下清晰可见 */
+  /* Slogan 图片样式：使用混合模式让白色背景透明，与蓝色背景融合 */
   .slogan-image {
     max-width: 80%;
     height: auto;
-    margin: 0 auto 20px;
+    margin: 0 auto 10px; /* 减少底部间距，让文字更靠近 */
     display: block;
-    /* 白色外发光效果，增强对比度 */
-    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.8)) drop-shadow(0 0 16px rgba(255, 255, 255, 0.4)) brightness(1.05);
+    /* 使用混合模式让白色背景透明，只保留有颜色的部分 */
+    mix-blend-mode: multiply;
+    /* 或者使用 screen 模式，根据图片效果选择 */
+    /* mix-blend-mode: screen; */
     transition: all 0.3s ease;
   }
 
   .slogan-image:hover {
-    filter: drop-shadow(0 0 12px rgba(255, 255, 255, 1)) drop-shadow(0 0 24px rgba(255, 255, 255, 0.6)) brightness(1.1);
     transform: scale(1.02);
+    filter: brightness(1.05);
   }
 
   /* 保留原有 .slogan 类名样式（兼容性） */
@@ -142,7 +144,8 @@ const router = useRouter()
   
   .sub-slogan {
     font-size: 20px;
-    margin-bottom: 60px;
+    margin-bottom: 40px;
+    margin-top: -20px; /* 上提文字，减少与图片的间距 */
     opacity: 0.8;
   }
   

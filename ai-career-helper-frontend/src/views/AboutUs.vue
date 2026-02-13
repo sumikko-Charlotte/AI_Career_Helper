@@ -8,7 +8,7 @@
       <!-- Slogan 图片区域（蓝色渐变背景，与探索页一致） -->
       <div class="slogan-container">
         <img 
-          src="/images/slogan-main_深色.png" 
+          src="/images/slogan-main_浅色.png" 
           alt="职航——AI辅助的大学生生涯成长平台" 
           class="slogan-image"
         >
@@ -103,21 +103,22 @@ ul li {
   border-radius: 8px;
 }
 
-/* Slogan 图片样式：优化白色刺眼问题，与蓝色背景融合 */
+/* Slogan 图片样式：使用混合模式让白色背景透明，与蓝色背景融合 */
 .slogan-image {
   max-width: 80%;
   height: auto;
   display: inline-block;
   vertical-align: middle;
-  background: inherit; /* 继承父容器蓝色背景，消除白色块 */
-  opacity: 0.95; /* 轻微降低不透明度，弱化白色刺眼感 */
-  filter: contrast(0.9) brightness(1.05); /* 微调对比度/亮度，适配蓝色背景 */
+  /* 使用混合模式让白色背景透明，只保留有颜色的部分 */
+  mix-blend-mode: multiply;
+  /* 如果 multiply 效果不理想，可以尝试 screen 模式 */
+  /* mix-blend-mode: screen; */
   transition: all 0.3s ease;
 }
 
 .slogan-image:hover {
-  opacity: 1;
-  filter: contrast(0.95) brightness(1.1);
+  filter: brightness(1.05);
+  transform: scale(1.01);
 }
 
 /* 适配小屏幕/移动端 */
