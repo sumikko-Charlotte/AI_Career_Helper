@@ -38,45 +38,66 @@ const stats = reactive({
 
 // 加载资料
 const fetchProfile = async () => {
-  const currentUser = localStorage.getItem('remembered_username')
+  // 获取用户名：优先从 localStorage，如果没有则尝试从 sessionStorage 或其他地方
+  let currentUser = localStorage.getItem('remembered_username')
+  
+  // 如果 localStorage 中没有，尝试从其他地方获取（比如登录后的用户数据）
   if (!currentUser) {
-    ElMessage.warning('请先登录')
-    return
+    // 尝试从 sessionStorage 获取
+    currentUser = sessionStorage.getItem('username')
+    // 如果还是没有，尝试从 URL 参数或其他地方获取
+    if (!currentUser) {
+      console.warn('[UserProfile] 未找到用户名，使用默认值')
+      // 不显示错误提示，因为用户已经登录了才能进入这个页面
+      // 只是无法加载个人资料，但可以编辑和保存
+    }
   }
   
-  // 立即设置用户名，确保姓名字段有值（与登录同步）
-  form.username = currentUser
-
-  try {
-    const res = await axios.get(`${API_BASE}/api/user/profile`, {
-      params: { username: currentUser }
-    })
-    if (res.data.success && res.data.data) {
-      // 合并其他字段，但强制使用登录时的用户名（确保姓名同步）
-      const { username, ...otherData } = res.data.data
-      Object.assign(form, otherData)
-      form.username = currentUser // 始终使用登录时的用户名
-    } else {
-      // 如果API没有返回数据，至少确保用户名有值
-      form.username = currentUser
-    }
-  } catch (error) {
-    console.error('[UserProfile] 获取用户资料失败:', error)
-    // 即使API失败，也确保用户名有值
+  // 如果找到了用户名，立即设置（作为默认值，用户可以编辑）
+  if (currentUser) {
     form.username = currentUser
+  }
+
+  // 如果有用户名，尝试从 API 加载资料
+  if (currentUser) {
+    try {
+      const res = await axios.get(`${API_BASE}/api/user/profile`, {
+        params: { username: currentUser }
+      })
+      if (res.data.success && res.data.data) {
+        // 合并其他字段
+        const { username, ...otherData } = res.data.data
+        Object.assign(form, otherData)
+        // 如果 API 返回了用户名，使用它；否则使用登录时的用户名
+        form.username = username || currentUser
+      }
+    } catch (error) {
+      console.error('[UserProfile] 获取用户资料失败:', error)
+      // API 失败不影响，继续使用默认值
+    }
   }
 }
 
 // 保存资料
 const handleSave = async () => {
-  const currentUser = localStorage.getItem('remembered_username')
+  // 获取用户名：优先从 localStorage，如果没有则使用表单中的用户名
+  let currentUser = localStorage.getItem('remembered_username')
   if (!currentUser) {
-    return ElMessage.warning('请先登录')
+    currentUser = sessionStorage.getItem('username')
   }
   
-  // 确保username使用登录时的用户名（不可修改）
-  if (!form.username || form.username !== currentUser) {
+  // 如果表单中有用户名，使用表单中的（允许用户修改姓名）
+  if (form.username) {
+    // 如果之前没有保存的用户名，使用表单中的用户名
+    if (!currentUser) {
+      currentUser = form.username
+    }
+  } else if (currentUser) {
+    // 如果表单中没有用户名，但 localStorage 中有，使用 localStorage 中的
     form.username = currentUser
+  } else {
+    // 如果都没有，提示用户
+    return ElMessage.warning('请填写姓名')
   }
   
   loading.value = true
@@ -120,16 +141,22 @@ const handleFileChange = async (e) => {
     return ElMessage.warning('图片大小不能超过 5MB')
   }
 
-  const currentUser = localStorage.getItem('remembered_username')
+  // 获取用户名：优先从表单，其次从 localStorage
+  let currentUser = form.username || localStorage.getItem('remembered_username')
   if (!currentUser) {
-    return ElMessage.warning('请先登录')
+    currentUser = sessionStorage.getItem('username')
+  }
+  
+  if (!currentUser) {
+    return ElMessage.warning('请先填写姓名')
   }
 
   const formData = new FormData()
-  formData.append('file', file)
+  formData.append('avatar', file) // 后端期望的字段名是 'avatar'
+  formData.append('username', currentUser) // 传递用户名
 
   try {
-    const res = await axios.post(`${API_BASE}/api/user/upload_avatar`, formData, {
+    const res = await axios.post(`${API_BASE}/api/user/avatar`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -187,9 +214,14 @@ const submitPasswordChange = async () => {
     return ElMessage.warning('新密码长度至少为 6 位')
   }
 
-  const currentUser = localStorage.getItem('remembered_username')
+  // 获取用户名：优先从表单，其次从 localStorage
+  let currentUser = form.username || localStorage.getItem('remembered_username')
   if (!currentUser) {
-    return ElMessage.warning('请先登录')
+    currentUser = sessionStorage.getItem('username')
+  }
+  
+  if (!currentUser) {
+    return ElMessage.warning('请先填写姓名')
   }
 
   try {
@@ -246,7 +278,7 @@ onMounted(() => fetchProfile())
             <el-row :gutter="20">
               <el-col :span="12">
                 <el-form-item label="姓名">
-                  <el-input v-model="form.username" readonly :prefix-icon="User" />
+                  <el-input v-model="form.username" :prefix-icon="User" placeholder="请输入姓名" />
                 </el-form-item>
               </el-col>
               <el-col :span="12">
@@ -396,15 +428,4 @@ onMounted(() => fetchProfile())
 .save-btn { width: 100%; margin-top: 15px; font-weight: bold; }
 .logout-btn { width: 100%; margin-top: 10px; margin-left: 0; }
 .switches { display: flex; gap: 15px; margin-top: 10px; }
-
-/* 只读输入框样式：灰色背景，表示不可编辑 */
-:deep(.el-input.is-readonly) {
-  background-color: #f5f7fa;
-  cursor: not-allowed;
-}
-:deep(.el-input.is-readonly .el-input__inner) {
-  background-color: #f5f7fa;
-  color: #909399;
-  cursor: not-allowed;
-}
 </style>
