@@ -323,7 +323,7 @@ onMounted(() => {
             <el-descriptions-item label="简历类型">
               <el-tag :type="currentDetail.resume_type === 'vip' ? 'danger' : 'primary'">
                 {{ currentDetail.resume_type === 'vip' ? 'VIP版' : '普通版' }}
-              </el-descriptions-item>
+              </el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="简历文件" :span="2">
               <span v-if="currentDetail.resume_file_url && !currentDetail.resume_file_url.startsWith('text_input_')">
