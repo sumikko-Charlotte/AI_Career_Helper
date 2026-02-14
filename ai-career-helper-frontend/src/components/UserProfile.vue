@@ -191,9 +191,9 @@ const handleFileChange = async (e) => {
     return ElMessage.warning('请选择图片文件')
   }
 
-  // 验证文件大小（限制 10MB）
-  if (file.size > 10 * 1024 * 1024) {
-    return ElMessage.warning('图片大小不能超过 10MB')
+  // 验证文件大小（限制 5MB，与后端保持一致）
+  if (file.size > 5 * 1024 * 1024) {
+    return ElMessage.warning('图片大小不能超过 5MB')
   }
 
   // 📸 立即显示预览（本地预览，无需等待上传）
@@ -220,11 +220,10 @@ const handleFileChange = async (e) => {
   formData.append('username', currentUser) // 传递用户名
 
   try {
+    // 注意：不要手动设置 Content-Type，让 axios 自动设置（包含 boundary）
     const res = await axios.post(`${API_BASE}/api/user/avatar`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      },
       timeout: 30000  // 增加超时时间，支持大文件上传
+      // 不设置 headers，让 axios 自动处理 multipart/form-data
     })
     if (res.data.success || res.data.code === 200) {
       // 更新头像显示（使用服务器返回的URL，替换本地预览）
@@ -276,16 +275,38 @@ const handleFileChange = async (e) => {
     }
   } catch (error) {
     console.error('[UserProfile] 头像上传失败:', error)
+    console.error('[UserProfile] 错误详情:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      statusText: error.response?.statusText
+    })
+    
     if (error.response) {
-      if (error.response.status === 400) {
-        ElMessage.error(error.response.data?.message || '文件格式不支持')
-      } else if (error.response.status === 413) {
-        ElMessage.error('文件过大，请选择小于 10MB 的图片')
+      const status = error.response.status
+      const errorData = error.response.data
+      
+      if (status === 400) {
+        const detail = errorData?.detail || errorData?.message || '文件格式不支持或参数错误'
+        ElMessage.error(`上传失败: ${detail}`)
+      } else if (status === 413) {
+        ElMessage.error('文件过大，请选择小于 5MB 的图片')
+      } else if (status === 404) {
+        ElMessage.error('用户不存在，请重新登录')
+      } else if (status === 500) {
+        const detail = errorData?.detail || errorData?.message || '服务器内部错误'
+        ElMessage.error(`服务器错误: ${detail}`)
       } else {
-        ElMessage.error(error.response.data?.message || '头像上传失败')
+        const detail = errorData?.detail || errorData?.message || '头像上传失败'
+        ElMessage.error(`上传失败 (${status}): ${detail}`)
       }
+    } else if (error.request) {
+      // 请求已发出但没有收到响应
+      ElMessage.error('网络错误：无法连接到服务器，请检查网络连接')
+      console.error('[UserProfile] 请求已发出但无响应:', error.request)
     } else {
-      ElMessage.error('网络错误，请检查连接')
+      // 请求配置错误
+      ElMessage.error(`请求配置错误: ${error.message}`)
     }
     // 上传失败，保留本地预览，让用户知道选择了什么图片
   } finally {
