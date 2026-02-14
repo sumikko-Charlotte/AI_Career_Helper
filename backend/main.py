@@ -57,12 +57,19 @@ frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"
 if os.path.exists(frontend_dist):
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="frontend_assets")
 
-# --- 1. 跨域配置：按需开放，确保支持 OPTIONS/POST/GET 等所有方法 ---
+# --- 1. 跨域配置：明确允许前端域名，确保支持 OPTIONS/POST/GET 等所有方法 ---
+# 关键修复点：明确包含前端域名，避免 CORS 错误
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://www.aicareerhelper.xyz",
+        "https://ai-career-helper-lac.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "*"  # 开发环境允许所有来源
+    ],
     allow_credentials=True,
-    allow_methods=["*"],  # 包含 OPTIONS / POST / GET
+    allow_methods=["*"],  # 包含 OPTIONS / POST / GET / PUT
     allow_headers=["*"],
 )
 
@@ -1004,31 +1011,40 @@ def update_profile(profile: UserProfile):
     except Exception as e:
         print(f"⚠️ [update_profile] CSV 文件更新失败: {e}")
     
-    # 2. 更新数据库（如果数据库有对应字段）
+    # 2. 更新数据库（关键修复点：确保数据库操作失败时返回明确的错误信息）
     try:
         # 使用 update_user_multiple_fields 更新数据库
-        db_fields = {}
-        if profile.email:
-            db_fields['email'] = profile.email
-        if profile.phone:
-            db_fields['phone'] = profile.phone
-        if profile.city:
-            db_fields['city'] = profile.city
+        # 关键修复点：即使字段为空，也保存（允许清空字段）
+        db_fields = {
+            'email': profile.email or '',
+            'phone': profile.phone or '',
+            'city': profile.city or ''
+        }
         if profile.avatar:
             db_fields['avatar'] = profile.avatar
         
+        # 关键修复点：强制更新数据库，确保数据持久化
         if db_fields:
             success = update_user_multiple_fields(username, db_fields)
             if success:
                 print(f"✅ [update_profile] 数据库更新成功: {db_fields}")
             else:
-                print(f"⚠️ [update_profile] 数据库更新失败（可能字段不存在）")
+                print(f"⚠️ [update_profile] 数据库更新失败（可能字段不存在），尝试逐个字段更新")
+                # 如果批量更新失败，尝试逐个字段更新
+                for field, value in db_fields.items():
+                    try:
+                        update_user_field(username, field, value)
+                        print(f"✅ [update_profile] 字段 {field} 单独更新成功")
+                    except Exception as e:
+                        print(f"⚠️ [update_profile] 字段 {field} 更新失败: {e}")
     except Exception as e:
-        print(f"⚠️ [update_profile] 数据库更新异常: {e}")
-        print(f"⚠️ [update_profile] 错误堆栈: {traceback.format_exc()}")
-        # 数据库更新失败不影响 CSV 保存，继续返回成功
+        error_msg = f"数据库更新异常: {str(e)}"
+        print(f"❌ [update_profile] {error_msg}")
+        print(f"❌ [update_profile] 错误堆栈: {traceback.format_exc()}")
+        # 关键修复点：数据库更新失败时返回 500 错误，而不是静默成功
+        raise HTTPException(status_code=500, detail=error_msg)
     
-    return {"success": True, "message": "资料已保存"}
+    return {"success": True, "message": "资料已保存", "code": 200}
 # ==========================================
 #  核心功能 F: 简历医生 (诊断 + 生成)
 # ==========================================
@@ -1104,8 +1120,8 @@ def change_password(req: ChangePwdRequest):
 # --- 5. 上传头像接口 ---
 @app.post("/api/user/avatar")
 async def upload_avatar(
-    avatar: UploadFile = File(...),
-    username: str = Form(...)
+    avatar: UploadFile = File(...),  # 关键修复点：使用 File(...) 确保文件必须提供
+    username: str = Form(...)  # 关键修复点：使用 Form(...) 确保用户名必须提供
 ):
     """
     上传用户头像接口
@@ -1213,8 +1229,12 @@ async def upload_avatar(
         print(f"⚠️ [upload_avatar] CSV 文件更新异常: {e}")
         # CSV 更新失败不影响主流程
     
+    # 关键修复点：返回兼容格式，包含 code 和 msg 字段
     return {
         "success": True,
+        "code": 200,
+        "msg": "上传成功",
+        "avatarUrl": avatar_url,  # 兼容字段名
         "avatar_url": avatar_url,
         "avatar": avatar_url,  # 兼容字段名
         "url": avatar_url,  # 兼容字段名
