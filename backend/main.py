@@ -944,24 +944,7 @@ def get_profile(username: str):
     """
     获取用户资料接口
     
-<<<<<<< Updated upstream
-    优先从数据库加载，如果数据库没有则从CSV加载
-    确保数据持久化，刷新后不丢失
-    """
-    # 1. 优先从数据库加载
-    try:
-        user = get_user_by_username(username)
-        if user:
-            # 从数据库获取用户信息
-            profile_data = {
-                "username": username,
-                "email": getattr(user, 'email', '') or '',
-                "phone": getattr(user, 'phone', '') or '',
-                "city": getattr(user, 'city', '') or '',
-                "avatar": getattr(user, 'avatar', '') or '',
-                "style": "专业正式",  # 默认值
-=======
-    优先从数据库加载（email、phone、city、avatar），如果数据库没有则从CSV加载
+    优先从数据库加载(email、phone、city、avatar)，如果数据库没有则从CSV加载
     确保数据持久化，刷新后不丢失
     """
     # 1. 优先从数据库加载（数据库是主要数据源）
@@ -976,17 +959,12 @@ def get_profile(username: str):
                 "city": getattr(user, 'city', '') or (user.get('city', '') if isinstance(user, dict) else ''),
                 "avatar": getattr(user, 'avatar', '') or (user.get('avatar', '') if isinstance(user, dict) else ''),
                 "style": "专业正式",  # 默认值（这些字段可能不在数据库中）
->>>>>>> Stashed changes
                 "file_format": "PDF",  # 默认值
                 "notify": True,
                 "auto_save": True
             }
             
-<<<<<<< Updated upstream
-            # 2. 如果CSV中有额外字段，合并（CSV作为补充）
-=======
             # 2. 如果CSV中有额外字段，合并（CSV作为补充，用于存储偏好设置）
->>>>>>> Stashed changes
             file_path = "data/profiles.csv"
             if os.path.exists(file_path):
                 with open(file_path, "r", encoding="utf-8-sig") as f:
@@ -994,15 +972,9 @@ def get_profile(username: str):
                     for row in reader:
                         if row.get('username') == username:
                             # 合并CSV中的字段（如果数据库中没有）
-<<<<<<< Updated upstream
-                            if not profile_data.get('style') and row.get('style'):
-                                profile_data['style'] = row.get('style', '专业正式')
-                            if not profile_data.get('file_format') and row.get('file_format'):
-=======
                             if row.get('style'):
                                 profile_data['style'] = row.get('style', '专业正式')
                             if row.get('file_format'):
->>>>>>> Stashed changes
                                 profile_data['file_format'] = row.get('file_format', 'PDF')
                             if row.get('notify'):
                                 profile_data['notify'] = row.get('notify') == 'True'
@@ -1013,16 +985,10 @@ def get_profile(username: str):
             return {"success": True, "data": profile_data}
     except Exception as e:
         print(f"⚠️ [get_profile] 从数据库加载失败: {e}")
-<<<<<<< Updated upstream
-        # 继续尝试从CSV加载
-    
-    # 3. 如果数据库没有，从CSV加载
-=======
         print(f"⚠️ [get_profile] 错误堆栈: {traceback.format_exc()}")
         # 继续尝试从CSV加载
     
     # 3. 如果数据库没有，从CSV加载（兼容旧数据）
->>>>>>> Stashed changes
     file_path = "data/profiles.csv"
     if os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8-sig") as f:
@@ -1082,20 +1048,12 @@ def update_profile(profile: UserProfile):
     # 2. 更新数据库（优先保存到数据库，确保持久化）
     try:
         # 使用 update_user_multiple_fields 更新数据库
-<<<<<<< Updated upstream
-        db_fields = {}
-        # 即使字段为空，也保存（允许清空字段）
-        db_fields['email'] = profile.email or ''
-        db_fields['phone'] = profile.phone or ''
-        db_fields['city'] = profile.city or ''
-=======
         # 即使字段为空，也保存（允许清空字段）
         db_fields = {
             'email': profile.email or '',
             'phone': profile.phone or '',
             'city': profile.city or ''
         }
->>>>>>> Stashed changes
         if profile.avatar:
             db_fields['avatar'] = profile.avatar
         
@@ -1104,11 +1062,7 @@ def update_profile(profile: UserProfile):
         if success:
             print(f"✅ [update_profile] 数据库更新成功: {db_fields}")
         else:
-<<<<<<< Updated upstream
-            print(f"⚠️ [update_profile] 数据库更新失败（可能字段不存在）")
-=======
             print(f"⚠️ [update_profile] 数据库更新失败（可能字段不存在），尝试逐个字段更新")
->>>>>>> Stashed changes
             # 如果批量更新失败，尝试逐个字段更新
             for field, value in db_fields.items():
                 try:
@@ -1227,11 +1181,7 @@ async def upload_avatar(
     # 注意：使用相对路径，前端会根据 API_BASE 自动拼接完整 URL
     avatar_url = f"/static/avatars/{safe_filename}"
     
-<<<<<<< Updated upstream
-    # 7. 更新数据库中的 avatar 字段（使用完整 URL 存储）
-=======
     # 7. 更新数据库中的 avatar 字段（优先保存到数据库，确保持久化）
->>>>>>> Stashed changes
     try:
         # 生成完整 URL 用于数据库存储
         base_url = os.getenv("BASE_URL", "https://ai-career-helper-backend-u1s0.onrender.com")
@@ -1239,11 +1189,7 @@ async def upload_avatar(
         
         success = update_user_field(username, "avatar", full_avatar_url)
         if success:
-<<<<<<< Updated upstream
             print(f"✅ [upload_avatar] 数据库 avatar 字段更新成功: {full_avatar_url}")
-=======
-            print(f"✅ [upload_avatar] 数据库 avatar 字段更新成功: {avatar_url}")
->>>>>>> Stashed changes
         else:
             print(f"⚠️ [upload_avatar] 数据库 avatar 字段更新失败（可能字段不存在），但文件已保存")
             # 即使数据库更新失败，文件已保存，继续返回成功
@@ -1305,18 +1251,12 @@ async def upload_avatar(
     
     return {
         "success": True,
-<<<<<<< Updated upstream
+        "code": 200,  # 兼容字段
+        "msg": "上传成功",  # 兼容字段
+        "avatarUrl": full_avatar_url,  # 兼容字段名
         "avatar_url": full_avatar_url,
         "avatar": full_avatar_url,  # 兼容字段名
         "url": full_avatar_url,  # 兼容字段名
-=======
-        "code": 200,  # 兼容字段
-        "msg": "上传成功",  # 兼容字段
-        "avatarUrl": avatar_url,  # 兼容字段名
-        "avatar_url": avatar_url,
-        "avatar": avatar_url,  # 兼容字段名
-        "url": avatar_url,  # 兼容字段名
->>>>>>> Stashed changes
         "message": "头像上传成功"
     }
 @app.post("/api/resume/generate")
