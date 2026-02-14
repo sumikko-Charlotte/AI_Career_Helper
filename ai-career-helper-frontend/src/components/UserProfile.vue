@@ -59,10 +59,66 @@ const fetchProfile = async () => {
 const handleSave = async () => {
   loading.value = true
   try {
-    const res = await axios.post(`${API_BASE}/api/user/profile`, form)
-    if (res.data.success) ElMessage.success('保存成功！')
+    // 关键修复点：确保发送完整的数据结构，包括 username
+    const profileData = {
+      username: form.username || localStorage.getItem('remembered_username'),
+      avatar: form.avatar || '',
+      email: form.email || '',
+      phone: form.phone || '',
+      city: form.city || '',
+      style: form.style || '专业正式',
+      file_format: form.file_format || 'PDF',
+      notify: form.notify !== undefined ? form.notify : true,
+      auto_save: form.auto_save !== undefined ? form.auto_save : true
+    }
+    
+    console.log('💾 [UserProfile] 保存用户资料:', profileData)
+    
+    const res = await axios.post(`${API_BASE}/api/user/profile`, profileData, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (res.data.success || res.data.code === 200) {
+      ElMessage.success(res.data.message || res.data.msg || '保存成功！数据已持久化到数据库')
+      
+      // 更新 localStorage 中的用户信息
+      try {
+        const loginUserStr = localStorage.getItem('login_user') || sessionStorage.getItem('login_user')
+        if (loginUserStr) {
+          const loginUser = JSON.parse(loginUserStr)
+          loginUser.email = profileData.email
+          loginUser.phone = profileData.phone
+          loginUser.city = profileData.city
+          loginUser.avatar = profileData.avatar
+          localStorage.setItem('login_user', JSON.stringify(loginUser))
+          sessionStorage.setItem('login_user', JSON.stringify(loginUser))
+        }
+      } catch (e) {
+        console.warn('更新 localStorage 失败:', e)
+      }
+    } else {
+      ElMessage.error(res.data.message || res.data.msg || '保存失败')
+    }
   } catch (error) {
-    ElMessage.error('保存失败')
+    console.error('[UserProfile] 保存失败:', error)
+    if (error.response) {
+      const status = error.response.status
+      const errorData = error.response.data
+      
+      if (status === 400) {
+        ElMessage.error(errorData?.detail || errorData?.message || '参数错误')
+      } else if (status === 404) {
+        ElMessage.error('用户不存在，请重新登录')
+      } else if (status === 500) {
+        ElMessage.error(errorData?.detail || errorData?.message || '服务器错误')
+      } else {
+        ElMessage.error(errorData?.detail || errorData?.message || '保存失败')
+      }
+    } else {
+      ElMessage.error('网络错误，请检查连接')
+    }
   } finally {
     loading.value = false
   }
@@ -77,18 +133,80 @@ const handleFileChange = async (e) => {
   const file = e.target.files[0]
   if (!file) return
 
+  // 验证文件类型
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+  if (!allowedTypes.includes(file.type)) {
+    return ElMessage.warning('仅支持 JPG、PNG、GIF、WEBP 格式的图片')
+  }
+
+  // 验证文件大小（限制 10MB）
+  if (file.size > 10 * 1024 * 1024) {
+    return ElMessage.warning('图片大小不能超过 10MB')
+  }
+
+  // 获取用户名
+  const currentUser = form.username || localStorage.getItem('remembered_username')
+  if (!currentUser) {
+    return ElMessage.warning('请先登录')
+  }
+
   const formData = new FormData()
-  formData.append('file', file)
+  formData.append('avatar', file)  // 关键修复点：使用 'avatar' 字段名，与后端匹配
+  formData.append('username', currentUser)  // 关键修复点：添加 username 字段
 
   try {
-    const res = await axios.post(`${API_BASE}/api/user/upload_avatar`, formData)
-    if (res.data.success) {
-      form.avatar = res.data.url // 更新头像显示
-      handleSave() // 自动保存一下 URL 到资料里
-      ElMessage.success('头像更新成功')
+    const res = await axios.post(`${API_BASE}/api/user/avatar`, formData, {  // 关键修复点：使用正确的接口路径
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      },
+      timeout: 30000  // 增加超时时间，支持大文件上传
+    })
+    
+    if (res.data.success || res.data.code === 200) {
+      // 关键修复点：使用返回的 url 字段（前端期望的字段）
+      const avatarUrl = res.data.url || res.data.avatarUrl || res.data.avatar_url || res.data.avatar
+      form.avatar = avatarUrl
+      
+      // 更新 localStorage 中的用户信息
+      try {
+        const loginUserStr = localStorage.getItem('login_user') || sessionStorage.getItem('login_user')
+        if (loginUserStr) {
+          const loginUser = JSON.parse(loginUserStr)
+          loginUser.avatar = avatarUrl
+          localStorage.setItem('login_user', JSON.stringify(loginUser))
+          sessionStorage.setItem('login_user', JSON.stringify(loginUser))
+        }
+      } catch (e) {
+        console.warn('更新 localStorage 失败:', e)
+      }
+      
+      ElMessage.success(res.data.msg || res.data.message || '头像更新成功')
+    } else {
+      ElMessage.error(res.data.msg || res.data.message || '头像上传失败')
     }
   } catch (error) {
-    ElMessage.error('头像上传失败')
+    console.error('[UserProfile] 头像上传失败:', error)
+    if (error.response) {
+      const status = error.response.status
+      const errorData = error.response.data
+      
+      if (status === 400) {
+        ElMessage.error(errorData?.detail || errorData?.message || '文件格式不支持或参数错误')
+      } else if (status === 413) {
+        ElMessage.error('文件过大，请选择小于 10MB 的图片')
+      } else if (status === 404) {
+        ElMessage.error('用户不存在，请重新登录')
+      } else {
+        ElMessage.error(errorData?.detail || errorData?.message || '头像上传失败')
+      }
+    } else {
+      ElMessage.error('网络错误，请检查连接')
+    }
+  } finally {
+    // 清空文件输入，允许重复选择同一文件
+    if (fileInput.value) {
+      fileInput.value.value = ''
+    }
   }
 }
 
