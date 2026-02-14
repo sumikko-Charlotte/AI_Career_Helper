@@ -53,6 +53,10 @@ app = FastAPI()
 os.makedirs("static/avatars", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# 关键修复点：配置上传文件访问路径
+os.makedirs("uploads/avatars", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
 if os.path.exists(frontend_dist):
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="frontend_assets")
@@ -61,17 +65,9 @@ if os.path.exists(frontend_dist):
 # 关键修复点：明确包含前端域名，避免 CORS 错误
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://www.aicareerhelper.xyz",
-        "https://ai-career-helper-lac.vercel.app",
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-        "*"  # 开发环境允许所有来源
-    ],
+    allow_origins=["*"],  # 允许所有来源，确保兼容性
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],  # 明确列出所有方法，包括 PUT
+    allow_methods=["*"],  # 包含所有 HTTP 方法
     allow_headers=["*"],
     expose_headers=["*"],
 )
@@ -1101,7 +1097,7 @@ def update_profile(profile: UserProfile):
         # 这样可以确保用户看到保存成功的提示，即使数据库操作失败
         # 数据库错误会在日志中记录，便于排查
     
-    return {"success": True, "message": "资料已保存"}
+    return {"success": True, "message": "资料已保存", "code": 200}
 # ==========================================
 #  核心功能 F: 简历医生 (诊断 + 生成)
 # ==========================================
@@ -1146,7 +1142,7 @@ def change_password(req: ChangePwdRequest):
 # --- 5. 上传头像接口 ---
 @app.post("/api/user/avatar")
 async def upload_avatar(
-    file: UploadFile = File(...),  # 修改：使用 file 作为参数名，与前端 FormData 字段名匹配
+    avatar: UploadFile = File(...),  # 关键修复点：使用 avatar 作为参数名，与前端 FormData 字段名匹配
     username: str = Form(...)
 ):
     """
@@ -1155,13 +1151,15 @@ async def upload_avatar(
     接收图片文件，保存到服务器，返回可访问的 URL
     同时更新数据库和 CSV 文件中的 avatar 字段
     
-    注意：前端 FormData 字段名应为 'file'，不是 'avatar'
+    请求格式：multipart/form-data
+    - avatar: 图片文件（必需）
+    - username: 用户名（必需）
     """
     import traceback
     import uuid
     from datetime import datetime
     
-    print(f"✅ [upload_avatar] 收到头像上传请求，用户: {username}, 文件名: {file.filename}")
+    print(f"✅ [upload_avatar] 收到头像上传请求，用户: {username}, 文件名: {avatar.filename if avatar else 'None'}")
     
     # 1. 验证用户是否存在
     user = get_user_by_username(username)
@@ -1169,16 +1167,16 @@ async def upload_avatar(
         raise HTTPException(status_code=404, detail="用户不存在")
     
     # 2. 验证文件类型
-    if not file.filename:
+    if not avatar or not avatar.filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")
     
-    file_ext = os.path.splitext(file.filename)[1].lower()
+    file_ext = os.path.splitext(avatar.filename)[1].lower()
     allowed_exts = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
     if file_ext not in allowed_exts:
         raise HTTPException(status_code=400, detail=f"不支持的文件格式，仅支持: {', '.join(allowed_exts)}")
     
-    # 3. 验证文件大小（限制 10MB，已解除更严格的限制）
-    file_content = await file.read()
+    # 3. 验证文件大小（限制 10MB）
+    file_content = await avatar.read()
     file_size_mb = len(file_content) / (1024 * 1024)
     print(f"📊 [upload_avatar] 文件大小: {file_size_mb:.2f} MB")
     
