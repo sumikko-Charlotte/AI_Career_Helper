@@ -63,7 +63,16 @@ const fetchProfile = async () => {
       if (loginUser.email) form.email = loginUser.email
       if (loginUser.phone) form.phone = loginUser.phone
       if (loginUser.city) form.city = loginUser.city
-      if (loginUser.avatar) form.avatar = loginUser.avatar
+      // 关键修复点：确保头像 URL 是完整路径（如果是相对路径，需要拼接 API_BASE）
+      if (loginUser.avatar) {
+        // 如果 avatar 是相对路径（以 / 开头但不是 http），拼接 API_BASE
+        if (loginUser.avatar.startsWith('/') && !loginUser.avatar.startsWith('http')) {
+          form.avatar = `${API_BASE}${loginUser.avatar}`
+        } else {
+          form.avatar = loginUser.avatar
+        }
+        console.log('📸 [UserProfile] 从登录信息加载头像:', form.avatar)
+      }
     }
   } catch (error) {
     console.warn('[UserProfile] 解析登录信息失败:', error)
