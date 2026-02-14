@@ -2212,12 +2212,13 @@ async def analyze_resume(
                         print(f"✅ [analyze_resume] 简历文件保存成功: {resume_file_url}")
                     elif resume_text:
                         # 如果是文本输入，生成一个标识URL（用于历史记录）
-                        from datetime import datetime
-                        resume_file_url = f"text_input_{username}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                        from datetime import datetime as dt
+                        resume_file_url = f"text_input_{username}_{dt.now().strftime('%Y%m%d_%H%M%S')}"
                         print(f"✅ [analyze_resume] 文本输入模式，生成标识URL: {resume_file_url}")
                     else:
                         # 如果没有文件也没有文本，使用默认URL
-                        resume_file_url = f"unknown_{username}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                        from datetime import datetime as dt
+                        resume_file_url = f"unknown_{username}_{dt.now().strftime('%Y%m%d_%H%M%S')}"
                         print(f"⚠️ [analyze_resume] 无文件无文本，使用默认URL: {resume_file_url}")
                     
                     # 3.3 构建AI分析结果（JSON格式）
