@@ -441,7 +441,7 @@ onMounted(() => {
 
     <!-- 刷新按钮 -->
     <div class="refresh-btn">
-      <el-button type="primary" :icon="Refresh" @click="refreshList" circle />
+      <el-button type="primary" :icon="Refresh" @click="refreshList" circle></el-button>
     </div>
 
     <!-- 简历历史记录详情弹窗 -->
