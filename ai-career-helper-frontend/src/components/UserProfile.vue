@@ -38,29 +38,38 @@ const stats = reactive({
   count: 12, days: '3个月', score: '4.8/5.0', level: '高级会员'
 })
 
-// 加载资料
+// 加载资料（优先从登录信息中读取，然后从API加载最新数据）
 const fetchProfile = async () => {
-  // 获取用户名：优先从 localStorage，如果没有则尝试从 sessionStorage 或其他地方
+  // 获取用户名：优先从 localStorage，如果没有则尝试从 sessionStorage
   let currentUser = localStorage.getItem('remembered_username')
-  
-  // 如果 localStorage 中没有，尝试从其他地方获取（比如登录后的用户数据）
   if (!currentUser) {
-    // 尝试从 sessionStorage 获取
     currentUser = sessionStorage.getItem('username')
-    // 如果还是没有，尝试从 URL 参数或其他地方获取
-    if (!currentUser) {
-      console.warn('[UserProfile] 未找到用户名，使用默认值')
-      // 不显示错误提示，因为用户已经登录了才能进入这个页面
-      // 只是无法加载个人资料，但可以编辑和保存
-    }
   }
   
   // 如果找到了用户名，立即设置（作为默认值，用户可以编辑）
   if (currentUser) {
     form.username = currentUser
   }
+  
+  // 1. 优先从登录信息中读取用户数据（从 localStorage 或 sessionStorage）
+  try {
+    const loginUserStr = localStorage.getItem('login_user') || sessionStorage.getItem('login_user')
+    if (loginUserStr) {
+      const loginUser = JSON.parse(loginUserStr)
+      console.log('📥 [UserProfile] 从登录信息加载用户数据:', loginUser)
+      
+      // 填充表单（登录信息是最新的）
+      if (loginUser.username) form.username = loginUser.username
+      if (loginUser.email) form.email = loginUser.email
+      if (loginUser.phone) form.phone = loginUser.phone
+      if (loginUser.city) form.city = loginUser.city
+      if (loginUser.avatar) form.avatar = loginUser.avatar
+    }
+  } catch (error) {
+    console.warn('[UserProfile] 解析登录信息失败:', error)
+  }
 
-  // 如果有用户名，尝试从 API 加载资料（优先从数据库加载，确保显示最新保存的数据）
+  // 2. 从 API 加载最新数据（确保显示数据库中的最新数据）
   if (currentUser) {
     try {
       const res = await axios.get(`${API_BASE}/api/user/profile`, {
@@ -68,14 +77,14 @@ const fetchProfile = async () => {
       })
       if (res.data.success && res.data.data) {
         const data = res.data.data
-        console.log('📥 [UserProfile] 加载用户资料:', data)
+        console.log('📥 [UserProfile] 从API加载用户资料:', data)
         
-        // 合并所有字段，确保显示最新保存的数据
+        // 合并所有字段，确保显示最新保存的数据（API数据优先）
         form.username = data.username || currentUser
-        form.avatar = data.avatar || ''  // 头像URL
-        form.email = data.email || ''
-        form.phone = data.phone || ''
-        form.city = data.city || ''
+        form.avatar = data.avatar || form.avatar || ''  // 头像URL（API优先）
+        form.email = data.email || form.email || ''
+        form.phone = data.phone || form.phone || ''
+        form.city = data.city || form.city || ''
         form.style = data.style || '专业正式'
         form.file_format = data.file_format || 'PDF'
         form.notify = data.notify !== undefined ? (data.notify === 'True' || data.notify === true) : true
@@ -87,7 +96,7 @@ const fetchProfile = async () => {
       }
     } catch (error) {
       console.error('[UserProfile] 获取用户资料失败:', error)
-      // API 失败不影响，继续使用默认值
+      // API 失败不影响，继续使用登录信息中的默认值
     }
   }
 }
@@ -132,12 +141,29 @@ const handleSave = async () => {
     console.log('💾 [UserProfile] 保存用户资料:', profileData)
     
     const res = await axios.post(`${API_BASE}/api/user/profile`, profileData)
-    if (res.data.success) {
-      ElMessage.success('保存成功！数据已持久化到数据库')
+    if (res.data.success || res.data.code === 200) {
+      ElMessage.success(res.data.message || res.data.msg || '保存成功！数据已持久化到数据库')
+      
+      // 更新登录信息中的用户数据（确保刷新后也能显示）
+      try {
+        const loginUserStr = localStorage.getItem('login_user') || sessionStorage.getItem('login_user')
+        if (loginUserStr) {
+          const loginUser = JSON.parse(loginUserStr)
+          loginUser.email = profileData.email
+          loginUser.phone = profileData.phone
+          loginUser.city = profileData.city
+          if (profileData.avatar) loginUser.avatar = profileData.avatar
+          localStorage.setItem('login_user', JSON.stringify(loginUser))
+          sessionStorage.setItem('login_user', JSON.stringify(loginUser))
+        }
+      } catch (e) {
+        console.warn('[UserProfile] 更新登录信息失败:', e)
+      }
+      
       // 保存成功后重新获取最新数据，确保显示最新内容
       await fetchProfile()
     } else {
-      ElMessage.error(res.data.message || '保存失败')
+      ElMessage.error(res.data.message || res.data.msg || '保存失败')
     }
   } catch (error) {
     console.error('[UserProfile] 保存失败:', error)
@@ -190,7 +216,7 @@ const handleFileChange = async (e) => {
   }
 
   const formData = new FormData()
-  formData.append('file', file) // 后端期望的字段名是 'file'（已修改后端接口参数名）
+  formData.append('avatar', file) // 后端期望的字段名是 'avatar'（用户已改回）
   formData.append('username', currentUser) // 传递用户名
 
   try {
@@ -200,11 +226,24 @@ const handleFileChange = async (e) => {
       },
       timeout: 30000  // 增加超时时间，支持大文件上传
     })
-    if (res.data.success) {
+    if (res.data.success || res.data.code === 200) {
       // 更新头像显示（使用服务器返回的URL，替换本地预览）
-      const serverAvatarUrl = res.data.url || res.data.avatar_url || res.data.avatar
+      const serverAvatarUrl = res.data.avatarUrl || res.data.url || res.data.avatar_url || res.data.avatar
       form.avatar = serverAvatarUrl
       avatarPreview.value = '' // 清空本地预览
+      
+      // 更新登录信息中的头像（确保刷新后也能显示）
+      try {
+        const loginUserStr = localStorage.getItem('login_user') || sessionStorage.getItem('login_user')
+        if (loginUserStr) {
+          const loginUser = JSON.parse(loginUserStr)
+          loginUser.avatar = serverAvatarUrl
+          localStorage.setItem('login_user', JSON.stringify(loginUser))
+          sessionStorage.setItem('login_user', JSON.stringify(loginUser))
+        }
+      } catch (e) {
+        console.warn('[UserProfile] 更新登录信息失败:', e)
+      }
       
       // 立即保存头像URL到用户资料（保存到数据库和CSV，确保持久化）
       // 注意：这里只保存头像URL，其他字段保持不变
@@ -230,9 +269,9 @@ const handleFileChange = async (e) => {
         // 保存失败不影响上传成功提示，但会在控制台记录错误
       }
       
-      ElMessage.success('头像上传并保存成功')
+      ElMessage.success(res.data.msg || res.data.message || '头像上传并保存成功')
     } else {
-      ElMessage.error(res.data.message || '头像上传失败')
+      ElMessage.error(res.data.message || res.data.msg || '头像上传失败')
       // 上传失败，保留本地预览
     }
   } catch (error) {

@@ -123,6 +123,23 @@ const handleLogin = async () => {
         localStorage.removeItem('remembered_username')
       }
 
+      // 🟢 关键修复点 3：保存完整的用户信息到 localStorage 和 sessionStorage（包括 email、phone、city、avatar）
+      if (user) {
+        const userInfo = {
+          id: user.id || '',
+          username: user.username || loginForm.value.username,
+          email: user.email || '',
+          phone: user.phone || '',
+          city: user.city || '',
+          avatar: user.avatar || '',
+          grade: user.grade || '',
+          target_role: user.target_role || ''
+        }
+        localStorage.setItem('login_user', JSON.stringify(userInfo))
+        sessionStorage.setItem('login_user', JSON.stringify(userInfo))
+        console.log('✅ [Login] 用户信息已保存到 localStorage 和 sessionStorage:', userInfo)
+      }
+
       // 同步到真实用户服务（用于持久化 CSV）
       try {
         const syncResp = await axios.post(`${SERVER_API}/api/login`, {
