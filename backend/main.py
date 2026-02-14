@@ -2028,6 +2028,11 @@ async def analyze_resume(
     resume_file_name = resume_file.filename if resume_file and hasattr(resume_file, 'filename') else None
     print(f"✅ [analyze_resume] 参数: resume_file={resume_file_name}, resume_text={'已提供' if resume_text else None}, username={username}, resume_type={resume_type}")
     
+    # 关键调试信息：记录是否提供了用户名
+    if not username:
+        print(f"⚠️ [analyze_resume] 警告：未提供 username 参数，历史记录将不会保存！")
+        print(f"⚠️ [analyze_resume] 前端必须通过 FormData 传递 username 和 resume_type 参数")
+    
     # 1. 提取简历文本内容
     resume_content = ""
     try:
