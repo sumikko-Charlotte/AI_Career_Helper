@@ -561,3 +561,151 @@ def decrement_user_field(username: str, field: str, decrement: int = 1) -> bool:
             cursor.close()
         if conn:
             conn.close()
+
+
+# ==========================================
+#  简历历史记录相关函数
+# ==========================================
+
+def create_resume_history(user_id: int, resume_type: str, resume_file_url: str, ai_analysis: str) -> Tuple[bool, Optional[int]]:
+    """
+    创建简历历史记录
+    
+    Args:
+        user_id: 用户ID
+        resume_type: 简历类型（'normal' 或 'vip'）
+        resume_file_url: 简历文件URL
+        ai_analysis: AI分析结果（JSON字符串或文本）
+    
+    Returns:
+        Tuple[bool, Optional[int]]: (是否成功, 记录ID)
+    """
+    conn = None
+    cursor = None
+    try:
+        conn, cursor = get_db_cursor()
+        
+        # 将 ai_analysis 转换为字符串（如果是字典，转为JSON）
+        if isinstance(ai_analysis, dict):
+            import json
+            ai_analysis_str = json.dumps(ai_analysis, ensure_ascii=False)
+        else:
+            ai_analysis_str = str(ai_analysis) if ai_analysis else ""
+        
+        insert_sql = """
+            INSERT INTO resume_history (user_id, resume_type, resume_file_url, ai_analysis, created_at)
+            VALUES (%s, %s, %s, %s, NOW())
+        """
+        cursor.execute(insert_sql, (user_id, resume_type, resume_file_url, ai_analysis_str))
+        conn.commit()
+        
+        # 获取插入的记录ID
+        history_id = cursor.lastrowid
+        print(f"✅ [create_resume_history] 历史记录创建成功，ID: {history_id}, 用户ID: {user_id}")
+        return True, history_id
+    except Exception as e:
+        print(f"❌ [create_resume_history] 创建历史记录失败: {e}")
+        if conn:
+            conn.rollback()
+        return False, None
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+def get_resume_history_by_user_id(user_id: int) -> List[Dict]:
+    """
+    根据用户ID查询所有简历历史记录（按时间倒序）
+    
+    Args:
+        user_id: 用户ID
+    
+    Returns:
+        List[Dict]: 历史记录列表
+    """
+    conn = None
+    cursor = None
+    try:
+        conn, cursor = get_db_cursor()
+        
+        select_sql = """
+            SELECT id, user_id, resume_type, resume_file_url, ai_analysis, created_at
+            FROM resume_history
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+        """
+        cursor.execute(select_sql, (user_id,))
+        results = cursor.fetchall()
+        
+        # 格式化返回结果
+        history_list = []
+        for row in results:
+            history_list.append({
+                "id": row.get('id'),
+                "user_id": row.get('user_id'),
+                "resume_type": row.get('resume_type'),
+                "resume_file_url": row.get('resume_file_url'),
+                "ai_analysis": row.get('ai_analysis'),
+                "created_at": row.get('created_at').strftime("%Y-%m-%d %H:%M:%S") if row.get('created_at') else ""
+            })
+        
+        print(f"✅ [get_resume_history_by_user_id] 查询到 {len(history_list)} 条历史记录，用户ID: {user_id}")
+        return history_list
+    except Exception as e:
+        print(f"❌ [get_resume_history_by_user_id] 查询历史记录失败: {e}")
+        return []
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+def get_resume_history_by_id(history_id: int, user_id: int) -> Optional[Dict]:
+    """
+    根据历史记录ID和用户ID查询单条记录（确保用户只能查看自己的记录）
+    
+    Args:
+        history_id: 历史记录ID
+        user_id: 用户ID
+    
+    Returns:
+        Optional[Dict]: 历史记录，如果不存在或不属于该用户则返回 None
+    """
+    conn = None
+    cursor = None
+    try:
+        conn, cursor = get_db_cursor()
+        
+        select_sql = """
+            SELECT id, user_id, resume_type, resume_file_url, ai_analysis, created_at
+            FROM resume_history
+            WHERE id = %s AND user_id = %s
+        """
+        cursor.execute(select_sql, (history_id, user_id))
+        result = cursor.fetchone()
+        
+        if result:
+            history = {
+                "id": result.get('id'),
+                "user_id": result.get('user_id'),
+                "resume_type": result.get('resume_type'),
+                "resume_file_url": result.get('resume_file_url'),
+                "ai_analysis": result.get('ai_analysis'),
+                "created_at": result.get('created_at').strftime("%Y-%m-%d %H:%M:%S") if result.get('created_at') else ""
+            }
+            print(f"✅ [get_resume_history_by_id] 查询历史记录成功，ID: {history_id}, 用户ID: {user_id}")
+            return history
+        else:
+            print(f"⚠️ [get_resume_history_by_id] 历史记录不存在或不属于该用户，ID: {history_id}, 用户ID: {user_id}")
+            return None
+    except Exception as e:
+        print(f"❌ [get_resume_history_by_id] 查询历史记录失败: {e}")
+        return None
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()

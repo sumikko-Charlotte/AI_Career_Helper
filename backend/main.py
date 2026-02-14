@@ -46,6 +46,9 @@ from .db_config import (
     create_user,
     increment_user_field,
     decrement_user_field,
+    create_resume_history,  # 关键修复点：新增简历历史记录创建函数
+    get_resume_history_by_user_id,  # 关键修复点：新增查询用户历史记录函数
+    get_resume_history_by_id,  # 关键修复点：新增查询单条历史记录函数
 )
 
 app = FastAPI()
@@ -53,9 +56,16 @@ app = FastAPI()
 os.makedirs("static/avatars", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+<<<<<<< Updated upstream
 # 关键修复点：配置上传文件访问路径
 os.makedirs("uploads/avatars", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+=======
+# 关键修复点：配置简历文件静态访问路径
+os.makedirs("uploads/resumes/normal", exist_ok=True)
+os.makedirs("uploads/resumes/vip", exist_ok=True)
+app.mount("/uploads/resumes", StaticFiles(directory="uploads/resumes"), name="resumes")
+>>>>>>> Stashed changes
 
 frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
 if os.path.exists(frontend_dist):
@@ -486,6 +496,106 @@ def get_history(username: str):
     # 按时间倒序排列 (最新的在前面)
     records.reverse()
     return {"success": True, "data": records}
+
+# ==========================================
+#  简历历史记录接口
+# ==========================================
+
+@app.get("/api/resume/history")
+def get_resume_history(username: str):
+    """
+    获取用户的简历历史记录列表
+    
+    关键修复点：仅返回当前用户的历史记录，按时间倒序排列
+    """
+    try:
+        # 1. 验证用户是否存在
+        user = get_user_by_username(username)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        
+        # 2. 获取用户ID
+        user_id = user.get('id') if isinstance(user, dict) else getattr(user, 'id', None)
+        if not user_id:
+            raise HTTPException(status_code=404, detail="用户ID不存在")
+        
+        # 3. 查询历史记录
+        history_list = get_resume_history_by_user_id(user_id)
+        
+        # 4. 格式化返回（不包含完整的 ai_analysis，只返回摘要）
+        result = []
+        for history in history_list:
+            result.append({
+                "id": history.get("id"),
+                "resume_type": history.get("resume_type"),
+                "resume_file_url": history.get("resume_file_url"),
+                "created_at": history.get("created_at")
+            })
+        
+        print(f"✅ [get_resume_history] 查询到 {len(result)} 条历史记录，用户: {username}")
+        return {"code": 200, "msg": "查询成功", "data": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ [get_resume_history] 查询历史记录失败: {e}")
+        print(f"❌ [get_resume_history] 错误堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+
+
+@app.get("/api/resume/history/{history_id}")
+def get_resume_history_detail(history_id: int, username: str):
+    """
+    获取单条简历历史记录详情
+    
+    关键修复点：仅能查询自己的记录，通过 history_id 和 username 双重验证
+    """
+    try:
+        # 1. 验证用户是否存在
+        user = get_user_by_username(username)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        
+        # 2. 获取用户ID
+        user_id = user.get('id') if isinstance(user, dict) else getattr(user, 'id', None)
+        if not user_id:
+            raise HTTPException(status_code=404, detail="用户ID不存在")
+        
+        # 3. 查询历史记录（确保只能查询自己的记录）
+        history = get_resume_history_by_id(history_id, user_id)
+        
+        if not history:
+            raise HTTPException(status_code=404, detail="记录不存在或无权访问")
+        
+        # 4. 解析 ai_analysis（如果是JSON字符串）
+        ai_analysis = history.get("ai_analysis", "")
+        try:
+            if ai_analysis:
+                import json
+                ai_analysis_data = json.loads(ai_analysis)
+            else:
+                ai_analysis_data = {}
+        except:
+            # 如果不是JSON，直接使用原始字符串
+            ai_analysis_data = {"raw": ai_analysis}
+        
+        # 5. 返回完整记录
+        result = {
+            "id": history.get("id"),
+            "resume_type": history.get("resume_type"),
+            "resume_file_url": history.get("resume_file_url"),
+            "ai_analysis": ai_analysis_data,
+            "created_at": history.get("created_at")
+        }
+        
+        print(f"✅ [get_resume_history_detail] 查询历史记录详情成功，ID: {history_id}, 用户: {username}")
+        return {"code": 200, "msg": "查询成功", "data": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ [get_resume_history_detail] 查询历史记录详情失败: {e}")
+        print(f"❌ [get_resume_history_detail] 错误堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+
 # 根路径处理（避免重复声明 / 路由）
 @app.get("/")
 def root():
@@ -1886,8 +1996,10 @@ def generate_job_test(req: GenerateJobTestRequest):
 
 @app.post("/api/analyze_resume")
 async def analyze_resume(
-    resume_file: UploadFile = File(...),
+    resume_file: Optional[UploadFile] = File(None),  # 关键修复点：改为可选，支持文本输入
     resume_text: Optional[str] = Form(None),
+    username: Optional[str] = Form(None),  # 关键修复点：新增用户名参数，用于关联历史记录
+    resume_type: Optional[str] = Form("normal"),  # 关键修复点：新增简历类型参数（normal/vip）
 ):
     """
     简历诊断与优化接口
@@ -2054,7 +2166,78 @@ async def analyze_resume(
             "（请补充具体的能力描述和职业目标）\n"
         )
     
-    # 3. 返回结果
+    # 3. 关键修复点：自动插入历史记录（如果提供了用户名）
+    resume_file_url = ""
+    if username:
+        try:
+            # 3.1 获取用户ID
+            user = get_user_by_username(username)
+            if user:
+                user_id = user.get('id') if isinstance(user, dict) else getattr(user, 'id', None)
+                
+                if user_id:
+                    # 3.2 保存简历文件（如果有文件上传）
+                    if resume_file:
+                        import uuid
+                        from datetime import datetime
+                        
+                        # 生成唯一文件名
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        unique_id = str(uuid.uuid4())[:8]
+                        file_ext = os.path.splitext(resume_file.filename)[1] if resume_file.filename else ".pdf"
+                        safe_filename = f"{username}_{timestamp}_{unique_id}{file_ext}"
+                        
+                        # 根据简历类型选择保存目录
+                        save_dir = "uploads/resumes/normal" if (resume_type == "normal" or not resume_type) else "uploads/resumes/vip"
+                        os.makedirs(save_dir, exist_ok=True)
+                        file_path = os.path.join(save_dir, safe_filename)
+                        
+                        # 保存文件（需要重新读取文件内容，因为之前已经读取过了）
+                        resume_file.file.seek(0)  # 重置文件指针
+                        file_content = await resume_file.read()
+                        with open(file_path, "wb") as f:
+                            f.write(file_content)
+                        
+                        # 生成文件URL
+                        base_url = os.getenv("BASE_URL", "https://ai-career-helper-backend-u1s0.onrender.com")
+                        resume_file_url = f"{base_url}/uploads/resumes/{resume_type or 'normal'}/{safe_filename}"
+                        print(f"✅ [analyze_resume] 简历文件保存成功: {resume_file_url}")
+                    elif resume_text:
+                        # 如果是文本输入，生成一个标识URL（用于历史记录）
+                        from datetime import datetime
+                        resume_file_url = f"text_input_{username}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    
+                    # 3.3 构建AI分析结果（JSON格式）
+                    ai_analysis_data = {
+                        "diagnosis_report": diagnosis_report,
+                        "optimized_resume": optimized_resume,
+                        "fallback": fallback_used
+                    }
+                    import json
+                    ai_analysis_str = json.dumps(ai_analysis_data, ensure_ascii=False)
+                    
+                    # 3.4 插入历史记录
+                    success, history_id = create_resume_history(
+                        user_id=user_id,
+                        resume_type=resume_type or "normal",
+                        resume_file_url=resume_file_url,
+                        ai_analysis=ai_analysis_str
+                    )
+                    
+                    if success:
+                        print(f"✅ [analyze_resume] 历史记录插入成功，记录ID: {history_id}")
+                    else:
+                        print(f"⚠️ [analyze_resume] 历史记录插入失败，但不影响分析结果返回")
+                else:
+                    print(f"⚠️ [analyze_resume] 用户 {username} 的ID不存在，跳过历史记录插入")
+            else:
+                print(f"⚠️ [analyze_resume] 用户 {username} 不存在，跳过历史记录插入")
+        except Exception as e:
+            print(f"⚠️ [analyze_resume] 插入历史记录异常: {e}")
+            print(f"⚠️ [analyze_resume] 错误堆栈: {traceback.format_exc()}")
+            # 历史记录插入失败不影响分析结果返回
+    
+    # 4. 返回结果
     return {
         "success": True,
         "diagnosis_report": diagnosis_report,
