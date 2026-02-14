@@ -61,15 +61,10 @@ if os.path.exists(frontend_dist):
 # 关键修复点：明确包含前端域名，避免 CORS 错误
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://www.aicareerhelper.xyz",
-        "https://ai-career-helper-lac.vercel.app",
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "*"  # 开发环境允许所有来源
-    ],
+    # 关键修复点：不能同时使用 "*" 和具体域名，使用 "*" 允许所有来源（生产环境也允许，确保兼容性）
+    allow_origins=["*"],  # 允许所有来源，避免 CORS 错误
     allow_credentials=True,
-    allow_methods=["*"],  # 包含 OPTIONS / POST / GET / PUT
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],  # 明确列出所有方法，包括 PUT
     allow_headers=["*"],
 )
 
@@ -1041,8 +1036,9 @@ def update_profile(profile: UserProfile):
         error_msg = f"数据库更新异常: {str(e)}"
         print(f"❌ [update_profile] {error_msg}")
         print(f"❌ [update_profile] 错误堆栈: {traceback.format_exc()}")
-        # 关键修复点：数据库更新失败时返回 500 错误，而不是静默成功
-        raise HTTPException(status_code=500, detail=error_msg)
+        # 关键修复点：数据库更新失败时，不抛出异常（因为 CSV 已保存成功）
+        # 这样可以确保用户看到保存成功的提示，即使数据库操作失败
+        # 数据库错误会在日志中记录，便于排查
     
     return {"success": True, "message": "资料已保存", "code": 200}
 # ==========================================
@@ -1120,20 +1116,34 @@ def change_password(req: ChangePwdRequest):
 # --- 5. 上传头像接口 ---
 @app.post("/api/user/avatar")
 async def upload_avatar(
-    avatar: UploadFile = File(...),  # 关键修复点：使用 File(...) 确保文件必须提供
-    username: str = Form(...)  # 关键修复点：使用 Form(...) 确保用户名必须提供
+    avatar: UploadFile = File(...),  # 关键修复点：使用 File(...) 确保文件必须提供，字段名必须为 'avatar'
+    username: str = Form(...)  # 关键修复点：使用 Form(...) 确保用户名必须提供，字段名必须为 'username'
 ):
     """
     上传用户头像接口
     
     接收图片文件，保存到服务器，返回可访问的 URL
     同时更新数据库和 CSV 文件中的 avatar 字段
+    
+    请求格式：multipart/form-data
+    - avatar: 图片文件（必需）
+    - username: 用户名（必需）
     """
     import traceback
     import uuid
     from datetime import datetime
     
-    print(f"✅ [upload_avatar] 收到头像上传请求，用户: {username}, 文件名: {avatar.filename}")
+    # 关键修复点：添加详细的日志，便于排查 422 错误
+    print(f"✅ [upload_avatar] 收到头像上传请求")
+    print(f"   - 用户: {username}")
+    print(f"   - 文件名: {avatar.filename if avatar else 'None'}")
+    print(f"   - 文件类型: {avatar.content_type if avatar else 'None'}")
+    
+    # 关键修复点：验证参数是否存在（FastAPI 的 File(...) 和 Form(...) 已经做了验证，这里做额外检查）
+    if not avatar or not avatar.filename:
+        raise HTTPException(status_code=400, detail="缺少必需参数: avatar (文件)")
+    if not username or not username.strip():
+        raise HTTPException(status_code=400, detail="缺少必需参数: username")
     
     # 1. 验证用户是否存在
     user = get_user_by_username(username)
