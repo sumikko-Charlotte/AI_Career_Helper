@@ -238,24 +238,9 @@ const startAnalyze = async () => {
       }
     } catch (e) { console.warn('上报任务统计到用户服务失败', e) }
 
-    // 保存到历史记录
-    try {
-      const currentUser = localStorage.getItem('remembered_username') || '游客'
-      const now2 = new Date()
-      const dateStr = `${now2.getFullYear()}-${now2.getMonth() + 1}-${now2.getDate()} ${now2.getHours()}:${now2.getMinutes()}`
-
-      await axios.post(`${API_BASE}/api/history/add`, {
-        username: currentUser,
-        action_type: '简历诊断',
-        title: '简历深度评估报告',
-        score: result.value.score || 0,
-        date: dateStr,
-        status: '已完成'
-      })
-      console.log('✅ 历史记录已自动归档')
-    } catch (historyErr) {
-      console.warn('历史记录保存失败 (不影响主流程):', historyErr)
-    }
+    // 注意：历史记录已由后端 /api/analyze_resume 接口自动保存（通过传递 username 和 resume_type 参数）
+    // 无需前端再次调用保存接口
+    console.log('✅ 历史记录将由后端自动保存')
 
   } catch (e) {
     console.error('❌ [ResumeDoctor] 接口调用失败:', e)
