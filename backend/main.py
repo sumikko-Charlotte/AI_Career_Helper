@@ -944,7 +944,11 @@ def get_profile(username: str):
     """
     获取用户资料接口
     
+<<<<<<< Updated upstream
     优先从数据库加载(email、phone、city、avatar)，如果数据库没有则从CSV加载
+=======
+    优先从数据库加载（email、phone、city、avatar），如果数据库没有则从CSV加载
+>>>>>>> Stashed changes
     确保数据持久化，刷新后不丢失
     """
     # 1. 优先从数据库加载（数据库是主要数据源）
@@ -1189,7 +1193,11 @@ async def upload_avatar(
         
         success = update_user_field(username, "avatar", full_avatar_url)
         if success:
+<<<<<<< Updated upstream
             print(f"✅ [upload_avatar] 数据库 avatar 字段更新成功: {full_avatar_url}")
+=======
+            print(f"✅ [upload_avatar] 数据库 avatar 字段更新成功: {avatar_url}")
+>>>>>>> Stashed changes
         else:
             print(f"⚠️ [upload_avatar] 数据库 avatar 字段更新失败（可能字段不存在），但文件已保存")
             # 即使数据库更新失败，文件已保存，继续返回成功
@@ -1253,10 +1261,17 @@ async def upload_avatar(
         "success": True,
         "code": 200,  # 兼容字段
         "msg": "上传成功",  # 兼容字段
+<<<<<<< Updated upstream
         "avatarUrl": full_avatar_url,  # 兼容字段名
         "avatar_url": full_avatar_url,
         "avatar": full_avatar_url,  # 兼容字段名
         "url": full_avatar_url,  # 兼容字段名
+=======
+        "avatarUrl": avatar_url,  # 兼容字段名
+        "avatar_url": avatar_url,
+        "avatar": avatar_url,  # 兼容字段名
+        "url": avatar_url,  # 兼容字段名
+>>>>>>> Stashed changes
         "message": "头像上传成功"
     }
 @app.post("/api/resume/generate")
