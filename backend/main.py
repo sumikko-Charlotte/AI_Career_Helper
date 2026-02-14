@@ -56,16 +56,11 @@ app = FastAPI()
 os.makedirs("static/avatars", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-<<<<<<< Updated upstream
-# 关键修复点：配置上传文件访问路径
+# 关键修复点：配置上传文件访问路径（头像和简历）
 os.makedirs("uploads/avatars", exist_ok=True)
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-=======
-# 关键修复点：配置简历文件静态访问路径
 os.makedirs("uploads/resumes/normal", exist_ok=True)
 os.makedirs("uploads/resumes/vip", exist_ok=True)
-app.mount("/uploads/resumes", StaticFiles(directory="uploads/resumes"), name="resumes")
->>>>>>> Stashed changes
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
 if os.path.exists(frontend_dist):
@@ -1211,16 +1206,21 @@ def update_profile(profile: UserProfile):
 # ==========================================
 #  核心功能 F: 简历医生 (诊断 + 生成)
 # ==========================================
+# 注意：此接口已被 /api/analyze_resume 替代，保留此接口仅用于向后兼容
 @app.post("/api/resume/analyze")
-async def analyze_resume(file: UploadFile = File(...)):
+async def analyze_resume_legacy(file: UploadFile = File(...)):
+    """
+    旧版简历分析接口（已废弃，请使用 /api/analyze_resume）
+    保留此接口仅用于向后兼容
+    """
     time.sleep(1.5)
-    print(f"收到简历诊断请求: {file.filename}")
+    print(f"收到简历诊断请求（旧版接口）: {file.filename}")
     
     # 核心：确保 score_rationale 存在
     return {
         "score": 82,
         "score_rationale": "✅ 基础分70。因项目使用了STAR法则+5分，技术栈匹配+10分；❌ 但缺少GitHub链接-3分。",
-        "summary": "简历结构清晰，技术栈覆盖全面，但‘量化成果’有待提升。",
+        "summary": "简历结构清晰，技术栈覆盖全面，但'量化成果'有待提升。",
         "strengths": ["教育背景优秀", "两段相关实习", "技术栈命中率高"],
         "weaknesses": ["缺乏具体性能数据", "自我评价泛泛", "无开源贡献"],
         "suggestions": ["补充性能对比数据", "增加熟练度描述", "添加 GitHub 链接"]
