@@ -13,6 +13,7 @@ import AdminProfile from '../views/admin/AdminProfile.vue'
 import ExploreGuide from '../views/ExploreGuide.vue'
 import AboutUs from '@/views/AboutUs.vue'
 import PrivacyPolicy from '@/views/PrivacyPolicy.vue'
+import ResumeHistory from '@/views/ResumeHistory.vue'
 
 const routes = [
   // 第1页：默认首页（slogan + 开始探索按钮）
@@ -53,6 +54,13 @@ const routes = [
     path: '/history',
     name: 'History',
     component: HistoryRecord
+  },
+  // 简历历史记录页面
+  {
+    path: '/resume-history',
+    name: 'ResumeHistory',
+    component: ResumeHistory,
+    meta: { requiresAuth: true } // 需要登录才能访问
   },
   // 关于我们和隐私政策（保留原有功能）
   {
