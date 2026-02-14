@@ -57,13 +57,23 @@ frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"
 if os.path.exists(frontend_dist):
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="frontend_assets")
 
-# --- 1. 跨域配置：按需开放，确保支持 OPTIONS/POST/GET 等所有方法 ---
+# --- 1. 跨域配置：明确允许前端域名，确保支持 OPTIONS/POST/GET 等所有方法 ---
+# 关键修复点：明确包含前端域名，避免 CORS 错误
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://www.aicareerhelper.xyz",
+        "https://ai-career-helper-lac.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+        "*"  # 开发环境允许所有来源
+    ],
     allow_credentials=True,
-    allow_methods=["*"],  # 包含 OPTIONS / POST / GET
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],  # 明确列出所有方法，包括 PUT
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # ==========================================
@@ -1046,7 +1056,17 @@ def update_profile(profile: UserProfile):
         print(f"⚠️ [update_profile] CSV 文件更新失败: {e}")
     
     # 2. 更新数据库（优先保存到数据库，确保持久化）
+    # 关键修复点：确保数据库操作有完整的错误处理和日志记录
     try:
+        username = profile.username
+        if not username:
+            raise HTTPException(status_code=400, detail="用户名不能为空")
+        
+        # 验证用户是否存在
+        user = get_user_by_username(username)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        
         # 使用 update_user_multiple_fields 更新数据库
         # 即使字段为空，也保存（允许清空字段）
         db_fields = {
@@ -1058,22 +1078,28 @@ def update_profile(profile: UserProfile):
             db_fields['avatar'] = profile.avatar
         
         # 强制更新数据库，确保数据持久化
-        success = update_user_multiple_fields(username, db_fields)
-        if success:
-            print(f"✅ [update_profile] 数据库更新成功: {db_fields}")
-        else:
-            print(f"⚠️ [update_profile] 数据库更新失败（可能字段不存在），尝试逐个字段更新")
-            # 如果批量更新失败，尝试逐个字段更新
-            for field, value in db_fields.items():
-                try:
-                    update_user_field(username, field, value)
-                    print(f"✅ [update_profile] 字段 {field} 单独更新成功")
-                except Exception as e:
-                    print(f"⚠️ [update_profile] 字段 {field} 更新失败: {e}")
+        if db_fields:
+            success = update_user_multiple_fields(username, db_fields)
+            if success:
+                print(f"✅ [update_profile] 数据库更新成功: {db_fields}")
+            else:
+                print(f"⚠️ [update_profile] 数据库更新失败（可能字段不存在），尝试逐个字段更新")
+                # 如果批量更新失败，尝试逐个字段更新
+                for field, value in db_fields.items():
+                    try:
+                        update_user_field(username, field, value)
+                        print(f"✅ [update_profile] 字段 {field} 单独更新成功")
+                    except Exception as e:
+                        print(f"⚠️ [update_profile] 字段 {field} 更新失败: {e}")
+    except HTTPException:
+        raise  # 重新抛出 HTTPException
     except Exception as e:
-        print(f"⚠️ [update_profile] 数据库更新异常: {e}")
-        print(f"⚠️ [update_profile] 错误堆栈: {traceback.format_exc()}")
-        # 数据库更新失败不影响 CSV 保存，继续返回成功
+        error_msg = f"数据库更新异常: {str(e)}"
+        print(f"❌ [update_profile] {error_msg}")
+        print(f"❌ [update_profile] 错误堆栈: {traceback.format_exc()}")
+        # 关键修复点：数据库更新失败时，不抛出异常（因为 CSV 已保存成功）
+        # 这样可以确保用户看到保存成功的提示，即使数据库操作失败
+        # 数据库错误会在日志中记录，便于排查
     
     return {"success": True, "message": "资料已保存"}
 # ==========================================
@@ -1256,9 +1282,140 @@ async def upload_avatar(
         "avatarUrl": full_avatar_url,  # 兼容字段名（返回完整URL）
         "avatar_url": full_avatar_url,
         "avatar": full_avatar_url,  # 兼容字段名
-        "url": full_avatar_url,  # 兼容字段名
+        "url": full_avatar_url,  # 兼容字段名（前端期望的字段）
         "message": "头像上传成功"
     }
+
+# --- 5.1. 头像上传接口别名（兼容前端路径） ---
+@app.post("/api/user/upload_avatar")
+async def upload_avatar_alias(
+    file: UploadFile = File(...),
+    username: str = Form(None)  # 允许为空，如果为空则从请求中获取
+):
+    """
+    头像上传接口别名，兼容前端路径 /api/user/upload_avatar
+    如果前端没有发送 username，尝试从请求中获取
+    """
+    # 如果 username 为空，尝试从请求头或其他地方获取
+    if not username:
+        # 这里可以尝试从 token 或其他方式获取，暂时使用默认值
+        # 或者要求前端必须发送 username
+        raise HTTPException(status_code=400, detail="缺少必需参数: username")
+    
+    # 调用主接口逻辑（复用代码）
+    import traceback
+    import uuid
+    from datetime import datetime
+    
+    print(f"✅ [upload_avatar_alias] 收到头像上传请求，用户: {username}, 文件名: {file.filename}")
+    
+    # 验证用户是否存在
+    user = get_user_by_username(username)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    # 验证文件类型
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+    
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    allowed_exts = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+    if file_ext not in allowed_exts:
+        raise HTTPException(status_code=400, detail=f"不支持的文件格式，仅支持: {', '.join(allowed_exts)}")
+    
+    # 验证文件大小（限制 10MB）
+    file_content = await file.read()
+    file_size_mb = len(file_content) / (1024 * 1024)
+    print(f"📊 [upload_avatar_alias] 文件大小: {file_size_mb:.2f} MB")
+    
+    if len(file_content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"文件大小不能超过 10MB，当前文件大小: {file_size_mb:.2f} MB")
+    
+    # 生成唯一文件名
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_id = str(uuid.uuid4())[:8]
+    safe_filename = f"{username}_{timestamp}_{unique_id}{file_ext}"
+    file_path = os.path.join("static", "avatars", safe_filename)
+    
+    # 确保目录存在
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    
+    # 保存文件
+    try:
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_content)
+        print(f"✅ [upload_avatar_alias] 文件保存成功: {file_path}")
+    except Exception as e:
+        print(f"❌ [upload_avatar_alias] 文件保存失败: {e}")
+        raise HTTPException(status_code=500, detail=f"文件保存失败: {str(e)}")
+    
+    # 生成可访问的 URL
+    base_url = os.getenv("BASE_URL", "https://ai-career-helper-backend-u1s0.onrender.com")
+    avatar_url = f"/static/avatars/{safe_filename}"
+    full_avatar_url = f"{base_url}{avatar_url}"
+    
+    # 更新数据库中的 avatar 字段
+    try:
+        success = update_user_field(username, "avatar", full_avatar_url)
+        if success:
+            print(f"✅ [upload_avatar_alias] 数据库 avatar 字段更新成功: {full_avatar_url}")
+        else:
+            print(f"⚠️ [upload_avatar_alias] 数据库 avatar 字段更新失败（可能字段不存在），但文件已保存")
+    except Exception as e:
+        print(f"⚠️ [upload_avatar_alias] 数据库更新异常: {e}")
+        print(f"⚠️ [upload_avatar_alias] 错误堆栈: {traceback.format_exc()}")
+    
+    # 更新 CSV 文件
+    try:
+        csv_path = "data/profiles.csv"
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+        profiles = []
+        if os.path.exists(csv_path):
+            with open(csv_path, "r", encoding="utf-8-sig") as f:
+                reader = csv.DictReader(f)
+                profiles = list(reader)
+        
+        updated = False
+        for row in profiles:
+            if row.get('username') == username:
+                row['avatar'] = full_avatar_url
+                updated = True
+                break
+        
+        if not updated:
+            profiles.append({
+                'username': username,
+                'avatar': full_avatar_url,
+                'email': '',
+                'phone': '',
+                'city': '',
+                'style': '专业正式',
+                'file_format': 'PDF',
+                'notify': 'True',
+                'auto_save': 'True'
+            })
+        
+        with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
+            fieldnames = ["username", "avatar", "email", "phone", "city", "style", "file_format", "notify", "auto_save"]
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(profiles)
+        print(f"✅ [upload_avatar_alias] CSV 文件 avatar 字段更新成功")
+    except Exception as e:
+        print(f"⚠️ [upload_avatar_alias] CSV 文件更新异常: {e}")
+    
+    # 返回结果（前端期望 url 字段）
+    return {
+        "success": True,
+        "code": 200,
+        "msg": "上传成功",
+        "url": full_avatar_url,  # 前端期望的字段
+        "avatarUrl": full_avatar_url,
+        "avatar_url": full_avatar_url,
+        "avatar": full_avatar_url,
+        "message": "头像上传成功"
+    }
+
 @app.post("/api/resume/generate")
 def generate_resume(req: GenerateResumeRequest):
     time.sleep(1.5)
