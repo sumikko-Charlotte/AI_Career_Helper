@@ -125,10 +125,19 @@ const handleSave = async () => {
   
   loading.value = true
   try {
+    // 关键修复点：确保只发送头像URL，不发送base64数据
+    // 如果 form.avatar 是 base64 数据（以 data: 开头），则不发送，只发送已上传的URL
+    let avatarUrl = form.avatar || ''
+    if (avatarUrl.startsWith('data:')) {
+      // 如果是 base64 预览数据，不发送（等待用户上传后再保存）
+      avatarUrl = ''
+      console.warn('⚠️ [UserProfile] 检测到 base64 预览数据，跳过保存（等待上传完成）')
+    }
+    
     // 确保所有字段都包含在请求中，包括头像、邮箱、手机、城市等
     const profileData = {
       username: currentUser,  // 使用当前登录的用户名（不可修改）
-      avatar: form.avatar || '',  // 头像URL（如果已上传）
+      avatar: avatarUrl,  // 关键修复点：只发送URL，不发送base64
       email: form.email || '',
       phone: form.phone || '',
       city: form.city || '',
@@ -140,7 +149,23 @@ const handleSave = async () => {
     
     console.log('💾 [UserProfile] 保存用户资料:', profileData)
     
-    const res = await axios.post(`${API_BASE}/api/user/profile`, profileData)
+    // 关键修复点：使用 PUT 方法（如果支持），否则使用 POST
+    const res = await axios.put(`${API_BASE}/api/user/profile`, profileData, {
+      headers: {
+        'Content-Type': 'application/json'  // 明确指定 JSON 格式
+      }
+    }).catch(async (error) => {
+      // 如果 PUT 不支持，回退到 POST
+      if (error.response?.status === 405) {
+        console.warn('⚠️ [UserProfile] PUT 方法不支持，回退到 POST')
+        return await axios.post(`${API_BASE}/api/user/profile`, profileData, {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+      }
+      throw error
+    })
     if (res.data.success || res.data.code === 200) {
       ElMessage.success(res.data.message || res.data.msg || '保存成功！数据已持久化到数据库')
       
