@@ -90,7 +90,19 @@ const fetchProfile = async () => {
         
         // 合并所有字段，确保显示最新保存的数据（API数据优先）
         form.username = data.username || currentUser
-        form.avatar = data.avatar || form.avatar || ''  // 头像URL（API优先）
+        // 关键修复点：确保头像 URL 是完整路径（如果是相对路径，需要拼接 API_BASE）
+        const avatarUrl = data.avatar || form.avatar || ''
+        if (avatarUrl) {
+          // 如果 avatar 是相对路径（以 / 开头但不是 http），拼接 API_BASE
+          if (avatarUrl.startsWith('/') && !avatarUrl.startsWith('http')) {
+            form.avatar = `${API_BASE}${avatarUrl}`
+          } else {
+            form.avatar = avatarUrl
+          }
+          console.log('📸 [UserProfile] 从API加载头像:', form.avatar)
+        } else {
+          form.avatar = ''  // 确保空值也被设置
+        }
         form.email = data.email || form.email || ''
         form.phone = data.phone || form.phone || ''
         form.city = data.city || form.city || ''
