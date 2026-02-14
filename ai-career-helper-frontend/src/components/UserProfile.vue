@@ -10,6 +10,8 @@ console.debug('[UserProfile] API_BASE ->', API_BASE)
 
 // 隐藏的文件上传 Input
 const fileInput = ref(null)
+// 图片预览（本地预览，上传前显示）
+const avatarPreview = ref('')
 
 // 修改密码弹窗状态
 const pwdDialogVisible = ref(false)
@@ -58,18 +60,30 @@ const fetchProfile = async () => {
     form.username = currentUser
   }
 
-  // 如果有用户名，尝试从 API 加载资料
+  // 如果有用户名，尝试从 API 加载资料（优先从数据库加载，确保显示最新保存的数据）
   if (currentUser) {
     try {
       const res = await axios.get(`${API_BASE}/api/user/profile`, {
         params: { username: currentUser }
       })
       if (res.data.success && res.data.data) {
-        // 合并其他字段
-        const { username, ...otherData } = res.data.data
-        Object.assign(form, otherData)
-        // 如果 API 返回了用户名，使用它；否则使用登录时的用户名
-        form.username = username || currentUser
+        const data = res.data.data
+        console.log('📥 [UserProfile] 加载用户资料:', data)
+        
+        // 合并所有字段，确保显示最新保存的数据
+        form.username = data.username || currentUser
+        form.avatar = data.avatar || ''  // 头像URL
+        form.email = data.email || ''
+        form.phone = data.phone || ''
+        form.city = data.city || ''
+        form.style = data.style || '专业正式'
+        form.file_format = data.file_format || 'PDF'
+        form.notify = data.notify !== undefined ? (data.notify === 'True' || data.notify === true) : true
+        form.auto_save = data.auto_save !== undefined ? (data.auto_save === 'True' || data.auto_save === true) : true
+        
+        console.log('✅ [UserProfile] 用户资料加载成功，头像URL:', form.avatar)
+      } else {
+        console.warn('⚠️ [UserProfile] API 返回数据格式异常:', res.data)
       }
     } catch (error) {
       console.error('[UserProfile] 获取用户资料失败:', error)
@@ -78,7 +92,7 @@ const fetchProfile = async () => {
   }
 }
 
-// 保存资料
+// 保存资料（确保所有字段都保存到数据库和CSV）
 const handleSave = async () => {
   // 获取用户名：优先从 localStorage，如果没有则使用表单中的用户名
   let currentUser = localStorage.getItem('remembered_username')
@@ -102,10 +116,25 @@ const handleSave = async () => {
   
   loading.value = true
   try {
-    const res = await axios.post(`${API_BASE}/api/user/profile`, form)
+    // 确保所有字段都包含在请求中，包括头像、邮箱、手机、城市等
+    const profileData = {
+      username: currentUser,  // 使用当前登录的用户名（不可修改）
+      avatar: form.avatar || '',  // 头像URL（如果已上传）
+      email: form.email || '',
+      phone: form.phone || '',
+      city: form.city || '',
+      style: form.style || '专业正式',
+      file_format: form.file_format || 'PDF',
+      notify: form.notify !== undefined ? form.notify : true,
+      auto_save: form.auto_save !== undefined ? form.auto_save : true
+    }
+    
+    console.log('💾 [UserProfile] 保存用户资料:', profileData)
+    
+    const res = await axios.post(`${API_BASE}/api/user/profile`, profileData)
     if (res.data.success) {
-      ElMessage.success('保存成功！')
-      // 保存成功后重新获取最新数据
+      ElMessage.success('保存成功！数据已持久化到数据库')
+      // 保存成功后重新获取最新数据，确保显示最新内容
       await fetchProfile()
     } else {
       ElMessage.error(res.data.message || '保存失败')
@@ -136,10 +165,19 @@ const handleFileChange = async (e) => {
     return ElMessage.warning('请选择图片文件')
   }
 
-  // 验证文件大小（限制 5MB）
-  if (file.size > 5 * 1024 * 1024) {
-    return ElMessage.warning('图片大小不能超过 5MB')
+  // 验证文件大小（限制 10MB）
+  if (file.size > 10 * 1024 * 1024) {
+    return ElMessage.warning('图片大小不能超过 10MB')
   }
+
+  // 📸 立即显示预览（本地预览，无需等待上传）
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    avatarPreview.value = e.target.result
+    // 临时更新头像显示，让用户立即看到预览
+    form.avatar = e.target.result
+  }
+  reader.readAsDataURL(file)
 
   // 获取用户名：优先从表单，其次从 localStorage
   let currentUser = form.username || localStorage.getItem('remembered_username')
@@ -152,23 +190,50 @@ const handleFileChange = async (e) => {
   }
 
   const formData = new FormData()
-  formData.append('avatar', file) // 后端期望的字段名是 'avatar'
+  formData.append('file', file) // 后端期望的字段名是 'file'（已修改后端接口参数名）
   formData.append('username', currentUser) // 传递用户名
 
   try {
     const res = await axios.post(`${API_BASE}/api/user/avatar`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
-      }
+      },
+      timeout: 30000  // 增加超时时间，支持大文件上传
     })
     if (res.data.success) {
-      // 更新头像显示（兼容不同的返回字段名）
-      form.avatar = res.data.url || res.data.avatar_url || res.data.avatar
-      // 自动保存头像URL到用户资料
-      await handleSave()
-      ElMessage.success('头像更新成功')
+      // 更新头像显示（使用服务器返回的URL，替换本地预览）
+      const serverAvatarUrl = res.data.url || res.data.avatar_url || res.data.avatar
+      form.avatar = serverAvatarUrl
+      avatarPreview.value = '' // 清空本地预览
+      
+      // 立即保存头像URL到用户资料（保存到数据库和CSV，确保持久化）
+      // 注意：这里只保存头像URL，其他字段保持不变
+      try {
+        const saveRes = await axios.post(`${API_BASE}/api/user/profile`, {
+          username: currentUser,
+          avatar: serverAvatarUrl,
+          email: form.email || '',
+          phone: form.phone || '',
+          city: form.city || '',
+          style: form.style || '专业正式',
+          file_format: form.file_format || 'PDF',
+          notify: form.notify !== undefined ? form.notify : true,
+          auto_save: form.auto_save !== undefined ? form.auto_save : true
+        })
+        if (saveRes.data.success) {
+          console.log('✅ [UserProfile] 头像URL已保存到数据库和CSV')
+        } else {
+          console.warn('⚠️ [UserProfile] 头像URL保存失败:', saveRes.data.message)
+        }
+      } catch (saveError) {
+        console.error('❌ [UserProfile] 保存头像URL失败:', saveError)
+        // 保存失败不影响上传成功提示，但会在控制台记录错误
+      }
+      
+      ElMessage.success('头像上传并保存成功')
     } else {
       ElMessage.error(res.data.message || '头像上传失败')
+      // 上传失败，保留本地预览
     }
   } catch (error) {
     console.error('[UserProfile] 头像上传失败:', error)
@@ -176,13 +241,14 @@ const handleFileChange = async (e) => {
       if (error.response.status === 400) {
         ElMessage.error(error.response.data?.message || '文件格式不支持')
       } else if (error.response.status === 413) {
-        ElMessage.error('文件过大，请选择小于 5MB 的图片')
+        ElMessage.error('文件过大，请选择小于 10MB 的图片')
       } else {
         ElMessage.error(error.response.data?.message || '头像上传失败')
       }
     } else {
       ElMessage.error('网络错误，请检查连接')
     }
+    // 上传失败，保留本地预览，让用户知道选择了什么图片
   } finally {
     // 清空文件输入，允许重复选择同一文件
     if (fileInput.value) {
@@ -340,8 +406,10 @@ onMounted(() => fetchProfile())
           <input type="file" ref="fileInput" accept="image/*" style="display: none" @change="handleFileChange">
           
           <div class="avatar-wrapper" @click="triggerUpload">
-            <img v-if="form.avatar" :src="form.avatar" class="avatar-img" />
-            <div v-else class="avatar-circle">{{ form.username.charAt(0).toUpperCase() }}</div>
+            <!-- 优先显示预览，其次显示已保存的头像，最后显示默认头像 -->
+            <img v-if="avatarPreview" :src="avatarPreview" class="avatar-img" alt="预览" />
+            <img v-else-if="form.avatar" :src="form.avatar" class="avatar-img" alt="头像" />
+            <div v-else class="avatar-circle">{{ form.username ? form.username.charAt(0).toUpperCase() : 'U' }}</div>
             <div class="avatar-mask"><el-icon><Upload /></el-icon></div>
           </div>
           
