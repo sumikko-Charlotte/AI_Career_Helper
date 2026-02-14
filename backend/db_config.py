@@ -585,12 +585,25 @@ def create_resume_history(user_id: int, resume_type: str, resume_file_url: str, 
     try:
         conn, cursor = get_db_cursor()
         
+        # 关键修复点：确保数据库连接使用 utf8mb4 字符集
+        cursor.execute("SET NAMES utf8mb4")
+        cursor.execute("SET CHARACTER SET utf8mb4")
+        cursor.execute("SET character_set_connection=utf8mb4")
+        
         # 将 ai_analysis 转换为字符串（如果是字典，转为JSON）
         if isinstance(ai_analysis, dict):
             import json
             ai_analysis_str = json.dumps(ai_analysis, ensure_ascii=False)
         else:
             ai_analysis_str = str(ai_analysis) if ai_analysis else ""
+        
+        # 关键修复点：确保字符串是有效的 UTF-8 编码
+        # 如果包含无法编码的字符，使用错误处理策略
+        try:
+            ai_analysis_str.encode('utf-8')
+        except UnicodeEncodeError:
+            # 如果包含无法编码的字符，使用 'ignore' 策略移除
+            ai_analysis_str = ai_analysis_str.encode('utf-8', errors='ignore').decode('utf-8')
         
         insert_sql = """
             INSERT INTO resume_history (user_id, resume_type, resume_file_url, ai_analysis, created_at)
@@ -604,7 +617,15 @@ def create_resume_history(user_id: int, resume_type: str, resume_file_url: str, 
         print(f"✅ [create_resume_history] 历史记录创建成功，ID: {history_id}, 用户ID: {user_id}")
         return True, history_id
     except Exception as e:
-        print(f"❌ [create_resume_history] 创建历史记录失败: {e}")
+        error_msg = str(e)
+        print(f"❌ [create_resume_history] 创建历史记录失败: {error_msg}")
+        
+        # 关键修复点：如果是字符编码错误，提供明确的解决方案
+        if "1366" in error_msg or "Incorrect string value" in error_msg:
+            print(f"❌ [create_resume_history] 字符编码错误！请执行以下 SQL 修复数据库表：")
+            print(f"   ALTER TABLE resume_history CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
+            print(f"   ALTER TABLE resume_history MODIFY ai_analysis TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
+        
         if conn:
             conn.rollback()
         return False, None
