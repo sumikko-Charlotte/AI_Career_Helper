@@ -151,6 +151,20 @@ const startAnalyze = async () => {
     const formData = new FormData()
     // 字段名必须与后端保持一致：resume_file
     formData.append('resume_file', selectedFile)
+    
+    // 关键修复点：传递用户名和简历类型，用于自动保存历史记录
+    const currentUsername = localStorage.getItem('remembered_username') || 
+                           (JSON.parse(localStorage.getItem('login_user') || '{}')).username || ''
+    const resumeType = currentMode.value === 'vip' ? 'vip' : 'normal'
+    
+    if (currentUsername) {
+      formData.append('username', currentUsername)
+      formData.append('resume_type', resumeType)
+      console.log('✅ [ResumeDoctor] 传递用户名和类型用于历史记录:', currentUsername, resumeType)
+    } else {
+      console.warn('⚠️ [ResumeDoctor] 未找到用户名，历史记录将不会保存')
+    }
+    
     console.log('✅ 准备上传的文件:', selectedFile.name, '字段名: resume_file')
 
     const baseUrl = API_BASE || 'https://ai-career-helper-backend-u1s0.onrender.com'
