@@ -528,21 +528,43 @@ async def redirect_resume_doctor():
 
 @app.post("/api/login")
 def login(request: LoginRequest):
+    """
+    登录接口
+    
+    验证用户名密码后，查询用户所有字段（id、username、email、phone、city、avatar）
+    返回完整用户信息，供前端渲染
+    """
     # 使用数据库验证登录
     success, message = user_login(request.username, request.password)
     if success:
-        # 登录成功，获取用户完整信息
+        # 登录成功，获取用户完整信息（包括新增的字段）
         user = get_user_by_username(request.username)
         if user:
+            # 关键修复点：构建完整的用户信息对象，确保所有字段都存在（包括 avatar）
+            # get_user_by_username 返回的是字典格式
+            user_info = {
+                "id": user.get('id', '') if isinstance(user, dict) else getattr(user, 'id', ''),
+                "username": user.get('username', request.username) if isinstance(user, dict) else getattr(user, 'username', request.username),
+                "email": user.get('email', '') or '' if isinstance(user, dict) else (getattr(user, 'email', '') or ''),
+                "phone": user.get('phone', '') or '' if isinstance(user, dict) else (getattr(user, 'phone', '') or ''),
+                "city": user.get('city', '') or '' if isinstance(user, dict) else (getattr(user, 'city', '') or ''),
+                "avatar": user.get('avatar', '') or '' if isinstance(user, dict) else (getattr(user, 'avatar', '') or ''),
+                "grade": user.get('grade', '') or '' if isinstance(user, dict) else (getattr(user, 'grade', '') or ''),
+                "target_role": user.get('target_role', '') or '' if isinstance(user, dict) else (getattr(user, 'target_role', '') or '')
+            }
+            
+            print(f"✅ [login] 用户登录成功: {request.username}, avatar: {user_info.get('avatar', '')}")
+            
             return {
                 "success": True, 
                 "message": "登录成功", 
-                "user": user
+                "user": user_info,
+                "code": 200  # 兼容字段
             }
         else:
-            return {"success": False, "message": "获取用户信息失败"}
+            return {"success": False, "message": "获取用户信息失败", "code": 500}
     else:
-        return {"success": False, "message": message}
+        return {"success": False, "message": message, "code": 401}
 
 # ==========================================
 # 🛑 替换 main.py 里的 register 函数
