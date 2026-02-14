@@ -2026,7 +2026,7 @@ async def analyze_resume(
     
     print(f"✅ [analyze_resume] 收到简历分析请求")
     resume_file_name = resume_file.filename if resume_file and hasattr(resume_file, 'filename') else None
-    print(f"✅ [analyze_resume] 参数: resume_file={resume_file_name}, resume_text={'已提供' if resume_text else None}")
+    print(f"✅ [analyze_resume] 参数: resume_file={resume_file_name}, resume_text={'已提供' if resume_text else None}, username={username}, resume_type={resume_type}")
     
     # 1. 提取简历文本内容
     resume_content = ""
@@ -2167,15 +2167,23 @@ async def analyze_resume(
         )
     
     # 3. 关键修复点：自动插入历史记录（如果提供了用户名）
+    # 注意：无论 AI 分析成功还是失败（降级模式），都要保存历史记录
     resume_file_url = ""
     if username:
+        print(f"🔄 [analyze_resume] 开始保存历史记录，用户名: {username}, 简历类型: {resume_type}")
         try:
             # 3.1 获取用户ID
             user = get_user_by_username(username)
-            if user:
+            if not user:
+                print(f"❌ [analyze_resume] 用户 {username} 不存在，跳过历史记录插入")
+            else:
                 user_id = user.get('id') if isinstance(user, dict) else getattr(user, 'id', None)
                 
-                if user_id:
+                if not user_id:
+                    print(f"❌ [analyze_resume] 用户 {username} 的ID不存在，跳过历史记录插入")
+                else:
+                    print(f"✅ [analyze_resume] 获取到用户ID: {user_id}")
+                    
                     # 3.2 保存简历文件（如果有文件上传）
                     if resume_file:
                         import uuid
@@ -2206,8 +2214,14 @@ async def analyze_resume(
                         # 如果是文本输入，生成一个标识URL（用于历史记录）
                         from datetime import datetime
                         resume_file_url = f"text_input_{username}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                        print(f"✅ [analyze_resume] 文本输入模式，生成标识URL: {resume_file_url}")
+                    else:
+                        # 如果没有文件也没有文本，使用默认URL
+                        resume_file_url = f"unknown_{username}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                        print(f"⚠️ [analyze_resume] 无文件无文本，使用默认URL: {resume_file_url}")
                     
                     # 3.3 构建AI分析结果（JSON格式）
+                    # 关键修复点：确保即使 AI 分析失败（降级模式），也要保存历史记录
                     ai_analysis_data = {
                         "diagnosis_report": diagnosis_report,
                         "optimized_resume": optimized_resume,
@@ -2215,8 +2229,10 @@ async def analyze_resume(
                     }
                     import json
                     ai_analysis_str = json.dumps(ai_analysis_data, ensure_ascii=False)
+                    print(f"✅ [analyze_resume] AI分析结果已构建，长度: {len(ai_analysis_str)} 字符，降级模式: {fallback_used}")
                     
-                    # 3.4 插入历史记录
+                    # 3.4 插入历史记录（关键修复点：无论成功失败都要尝试保存）
+                    print(f"🔄 [analyze_resume] 开始插入历史记录到数据库...")
                     success, history_id = create_resume_history(
                         user_id=user_id,
                         resume_type=resume_type or "normal",
@@ -2225,17 +2241,16 @@ async def analyze_resume(
                     )
                     
                     if success:
-                        print(f"✅ [analyze_resume] 历史记录插入成功，记录ID: {history_id}")
+                        print(f"✅ [analyze_resume] 历史记录插入成功！记录ID: {history_id}, 用户ID: {user_id}, 简历类型: {resume_type}")
                     else:
-                        print(f"⚠️ [analyze_resume] 历史记录插入失败，但不影响分析结果返回")
-                else:
-                    print(f"⚠️ [analyze_resume] 用户 {username} 的ID不存在，跳过历史记录插入")
-            else:
-                print(f"⚠️ [analyze_resume] 用户 {username} 不存在，跳过历史记录插入")
+                        print(f"❌ [analyze_resume] 历史记录插入失败！用户ID: {user_id}, 简历类型: {resume_type}")
+                        print(f"❌ [analyze_resume] 请检查数据库表 resume_history 是否存在，以及数据库连接是否正常")
         except Exception as e:
-            print(f"⚠️ [analyze_resume] 插入历史记录异常: {e}")
-            print(f"⚠️ [analyze_resume] 错误堆栈: {traceback.format_exc()}")
-            # 历史记录插入失败不影响分析结果返回
+            print(f"❌ [analyze_resume] 插入历史记录异常: {e}")
+            print(f"❌ [analyze_resume] 错误堆栈: {traceback.format_exc()}")
+            # 历史记录插入失败不影响分析结果返回，但记录详细错误信息
+    else:
+        print(f"⚠️ [analyze_resume] 未提供用户名（username），跳过历史记录保存")
     
     # 4. 返回结果
     return {
