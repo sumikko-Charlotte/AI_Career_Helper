@@ -15,10 +15,18 @@ const md = new MarkdownIt({
 const loading = ref(false)
 const historyList = ref([])
 
-    return localStorage.getItem('remembered_username')
+// 获取当前登录用户名（修复：封装为独立函数，避免 return 语句暴露在函数外部）
+const getCurrentUsername = () => {
+  try {
+    const loginUserStr = localStorage.getItem('login_user') || sessionStorage.getItem('login_user')
+    if (loginUserStr) {
+      const loginUser = JSON.parse(loginUserStr)
+      return loginUser.username || localStorage.getItem('remembered_username') || ''
+    }
+    return localStorage.getItem('remembered_username') || ''
   } catch (e) {
     console.warn('[HistoryRecord] 获取用户名失败:', e)
-    return localStorage.getItem('remembered_username')
+    return '' // 兜底返回空字符串，避免 undefined
   }
 }
 
@@ -52,6 +60,12 @@ const loadHistoryRecords = async () => {
       ElMessage.error('服务器错误，请稍后重试')
     } else {
       ElMessage.error('获取历史记录失败，请检查网络连接')
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
 const uploadedKeys = ref([])
 const UP_KEY = 'uploaded_resume_tasks'
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://ai-career-helper-backend-u1s0.onrender.com'
@@ -98,8 +112,6 @@ const fetchHistory = async () => {
   }
 }
 
-// 查看详情
-const viewDetail = async (row) => {
 // 获取简历历史记录列表（新增功能）
 const getResumeHistoryList = async () => {
   const username = getCurrentUsername()
@@ -136,24 +148,6 @@ const getResumeHistoryList = async () => {
   }
 }
 
-// 获取当前登录用户名
-const getCurrentUsername = () => {
-  try {
-    const loginUserStr = localStorage.getItem('login_user') || sessionStorage.getItem('login_user')
-    if (loginUserStr) {
-      const loginUser = JSON.parse(loginUserStr)
-      return loginUser.username || localStorage.getItem('remembered_username')
-    }
-    return localStorage.getItem('remembered_username')
-  } catch (e) {
-    console.warn('[HistoryRecord] 获取用户名失败:', e)
-    return localStorage.getItem('remembered_username')
-  }
-} catch (e) {
-    console.warn('[HistoryRecord] 获取用户名失败:', e)
-    return localStorage.getItem('remembered_username')
-  }
-}
 
 // 查看简历历史记录详情
 const viewResumeDetail = async (row) => {
