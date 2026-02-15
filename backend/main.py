@@ -46,12 +46,21 @@ from .db_config import (
     create_user,
     increment_user_field,
     decrement_user_field,
+    create_resume_history,  # 关键修复点：新增简历历史记录创建函数
+    get_resume_history_by_user_id,  # 关键修复点：新增查询用户历史记录函数
+    get_resume_history_by_id,  # 关键修复点：新增查询单条历史记录函数
 )
 
 app = FastAPI()
 
 os.makedirs("static/avatars", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# 关键修复点：配置上传文件访问路径（头像和简历）
+os.makedirs("uploads/avatars", exist_ok=True)
+os.makedirs("uploads/resumes/normal", exist_ok=True)
+os.makedirs("uploads/resumes/vip", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
 if os.path.exists(frontend_dist):
@@ -61,11 +70,18 @@ if os.path.exists(frontend_dist):
 # 关键修复点：明确包含前端域名，避免 CORS 错误
 app.add_middleware(
     CORSMiddleware,
+<<<<<<< HEAD
     # 关键修复点：不能同时使用 "*" 和具体域名，使用 "*" 允许所有来源（生产环境也允许，确保兼容性）
     allow_origins=["*"],  # 允许所有来源，避免 CORS 错误
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],  # 明确列出所有方法，包括 PUT
+=======
+    allow_origins=["*"],  # 允许所有来源，确保兼容性
+    allow_credentials=True,
+    allow_methods=["*"],  # 包含所有 HTTP 方法
+>>>>>>> mobile-adaptive
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # ==========================================
@@ -482,6 +498,106 @@ def get_history(username: str):
     # 按时间倒序排列 (最新的在前面)
     records.reverse()
     return {"success": True, "data": records}
+
+# ==========================================
+#  简历历史记录接口
+# ==========================================
+
+@app.get("/api/resume/history")
+def get_resume_history(username: str):
+    """
+    获取用户的简历历史记录列表
+    
+    关键修复点：仅返回当前用户的历史记录，按时间倒序排列
+    """
+    try:
+        # 1. 验证用户是否存在
+        user = get_user_by_username(username)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        
+        # 2. 获取用户ID
+        user_id = user.get('id') if isinstance(user, dict) else getattr(user, 'id', None)
+        if not user_id:
+            raise HTTPException(status_code=404, detail="用户ID不存在")
+        
+        # 3. 查询历史记录
+        history_list = get_resume_history_by_user_id(user_id)
+        
+        # 4. 格式化返回（不包含完整的 ai_analysis，只返回摘要）
+        result = []
+        for history in history_list:
+            result.append({
+                "id": history.get("id"),
+                "resume_type": history.get("resume_type"),
+                "resume_file_url": history.get("resume_file_url"),
+                "created_at": history.get("created_at")
+            })
+        
+        print(f"✅ [get_resume_history] 查询到 {len(result)} 条历史记录，用户: {username}")
+        return {"code": 200, "msg": "查询成功", "data": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ [get_resume_history] 查询历史记录失败: {e}")
+        print(f"❌ [get_resume_history] 错误堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+
+
+@app.get("/api/resume/history/{history_id}")
+def get_resume_history_detail(history_id: int, username: str):
+    """
+    获取单条简历历史记录详情
+    
+    关键修复点：仅能查询自己的记录，通过 history_id 和 username 双重验证
+    """
+    try:
+        # 1. 验证用户是否存在
+        user = get_user_by_username(username)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        
+        # 2. 获取用户ID
+        user_id = user.get('id') if isinstance(user, dict) else getattr(user, 'id', None)
+        if not user_id:
+            raise HTTPException(status_code=404, detail="用户ID不存在")
+        
+        # 3. 查询历史记录（确保只能查询自己的记录）
+        history = get_resume_history_by_id(history_id, user_id)
+        
+        if not history:
+            raise HTTPException(status_code=404, detail="记录不存在或无权访问")
+        
+        # 4. 解析 ai_analysis（如果是JSON字符串）
+        ai_analysis = history.get("ai_analysis", "")
+        try:
+            if ai_analysis:
+                import json
+                ai_analysis_data = json.loads(ai_analysis)
+            else:
+                ai_analysis_data = {}
+        except:
+            # 如果不是JSON，直接使用原始字符串
+            ai_analysis_data = {"raw": ai_analysis}
+        
+        # 5. 返回完整记录
+        result = {
+            "id": history.get("id"),
+            "resume_type": history.get("resume_type"),
+            "resume_file_url": history.get("resume_file_url"),
+            "ai_analysis": ai_analysis_data,
+            "created_at": history.get("created_at")
+        }
+        
+        print(f"✅ [get_resume_history_detail] 查询历史记录详情成功，ID: {history_id}, 用户: {username}")
+        return {"code": 200, "msg": "查询成功", "data": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ [get_resume_history_detail] 查询历史记录详情失败: {e}")
+        print(f"❌ [get_resume_history_detail] 错误堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+
 # 根路径处理（避免重复声明 / 路由）
 @app.get("/")
 def root():
@@ -540,6 +656,7 @@ def login(request: LoginRequest):
         # 登录成功，获取用户完整信息（包括新增的字段）
         user = get_user_by_username(request.username)
         if user:
+<<<<<<< HEAD
             # 关键修复点：构建完整的用户信息对象，确保所有字段都存在（包括 avatar）
             # get_user_by_username 返回的是字典格式
             user_info = {
@@ -554,6 +671,27 @@ def login(request: LoginRequest):
             }
             
             print(f"✅ [login] 用户登录成功: {request.username}, avatar: {user_info.get('avatar', '')}")
+=======
+            # 构建完整的用户信息对象（兼容字典和对象格式）
+            if isinstance(user, dict):
+                user_info = {
+                    "id": user.get('id', ''),
+                    "username": user.get('username', request.username),
+                    "email": user.get('email', ''),
+                    "phone": user.get('phone', ''),
+                    "city": user.get('city', ''),
+                    "avatar": user.get('avatar', '')
+                }
+            else:
+                user_info = {
+                    "id": getattr(user, 'id', ''),
+                    "username": getattr(user, 'username', request.username),
+                    "email": getattr(user, 'email', '') or '',
+                    "phone": getattr(user, 'phone', '') or '',
+                    "city": getattr(user, 'city', '') or '',
+                    "avatar": getattr(user, 'avatar', '') or ''
+                }
+>>>>>>> mobile-adaptive
             
             return {
                 "success": True, 
@@ -938,22 +1076,67 @@ class UserProfile(BaseModel):
 # --- 2. 获取用户资料接口 ---
 @app.get("/api/user/profile")
 def get_profile(username: str):
+    """
+    获取用户资料接口
+    
+    优先从数据库加载(email、phone、city、avatar)，如果数据库没有则从CSV加载
+    确保数据持久化，刷新后不丢失
+    """
+    # 1. 优先从数据库加载（数据库是主要数据源）
+    try:
+        user = get_user_by_username(username)
+        if user:
+            # 从数据库获取用户信息（包括新增的字段）
+            profile_data = {
+                "username": username,
+                "email": getattr(user, 'email', '') or (user.get('email', '') if isinstance(user, dict) else ''),
+                "phone": getattr(user, 'phone', '') or (user.get('phone', '') if isinstance(user, dict) else ''),
+                "city": getattr(user, 'city', '') or (user.get('city', '') if isinstance(user, dict) else ''),
+                "avatar": getattr(user, 'avatar', '') or (user.get('avatar', '') if isinstance(user, dict) else ''),
+                "style": "专业正式",  # 默认值（这些字段可能不在数据库中）
+                "file_format": "PDF",  # 默认值
+                "notify": True,
+                "auto_save": True
+            }
+            
+            # 2. 如果CSV中有额外字段，合并（CSV作为补充，用于存储偏好设置）
+            file_path = "data/profiles.csv"
+            if os.path.exists(file_path):
+                with open(file_path, "r", encoding="utf-8-sig") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if row.get('username') == username:
+                            # 合并CSV中的字段（如果数据库中没有）
+                            if row.get('style'):
+                                profile_data['style'] = row.get('style', '专业正式')
+                            if row.get('file_format'):
+                                profile_data['file_format'] = row.get('file_format', 'PDF')
+                            if row.get('notify'):
+                                profile_data['notify'] = row.get('notify') == 'True'
+                            if row.get('auto_save'):
+                                profile_data['auto_save'] = row.get('auto_save') == 'True'
+                            break
+            
+            return {"success": True, "data": profile_data}
+    except Exception as e:
+        print(f"⚠️ [get_profile] 从数据库加载失败: {e}")
+        print(f"⚠️ [get_profile] 错误堆栈: {traceback.format_exc()}")
+        # 继续尝试从CSV加载
+    
+    # 3. 如果数据库没有，从CSV加载（兼容旧数据）
     file_path = "data/profiles.csv"
-    if not os.path.exists(file_path):
-        # 如果还没存过资料，返回一个默认的空资料
-        return {"success": True, "data": {"username": username, "email": "", "phone": "", "city": "", "style": "专业正式", "file_format": "PDF"}}
+    if os.path.exists(file_path):
+        with open(file_path, "r", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row.get('username') == username:
+                    # 转换布尔值 (CSV里存的是字符串)
+                    row['notify'] = row.get('notify') == 'True'
+                    row['auto_save'] = row.get('auto_save') == 'True'
+                    return {"success": True, "data": row}
     
-    with open(file_path, "r", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if row.get('username') == username:
-                # 转换布尔值 (CSV里存的是字符串)
-                row['notify'] = row.get('notify') == 'True'
-                row['auto_save'] = row.get('auto_save') == 'True'
-                return {"success": True, "data": row}
-    
-    # 没找到也返回默认
-    return {"success": True, "data": {"username": username}}
+    # 4. 都没找到，返回默认值
+    return {"success": True, "data": {"username": username, "email": "", "phone": "", "city": "", "avatar": "", "style": "专业正式", "file_format": "PDF", "notify": True, "auto_save": True}}
 
 # --- 3. 更新用户资料接口（支持 PUT 和 POST，推荐使用 PUT） ---
 @app.put("/api/user/profile")
@@ -1028,6 +1211,7 @@ def update_profile(profile: UserProfile):
     except Exception as e:
         print(f"⚠️ [update_profile] CSV 文件更新失败: {e}")
     
+<<<<<<< HEAD
     # 2. 更新数据库（关键修复点：确保数据库操作失败时返回明确的错误信息）
     try:
         # 使用 update_user_multiple_fields 更新数据库
@@ -1041,6 +1225,31 @@ def update_profile(profile: UserProfile):
             db_fields['avatar'] = profile.avatar
         
         # 关键修复点：强制更新数据库，确保数据持久化
+=======
+    # 2. 更新数据库（优先保存到数据库，确保持久化）
+    # 关键修复点：确保数据库操作有完整的错误处理和日志记录
+    try:
+        username = profile.username
+        if not username:
+            raise HTTPException(status_code=400, detail="用户名不能为空")
+        
+        # 验证用户是否存在
+        user = get_user_by_username(username)
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        
+        # 使用 update_user_multiple_fields 更新数据库
+        # 即使字段为空，也保存（允许清空字段）
+        db_fields = {
+            'email': profile.email or '',
+            'phone': profile.phone or '',
+            'city': profile.city or ''
+        }
+        if profile.avatar:
+            db_fields['avatar'] = profile.avatar
+        
+        # 强制更新数据库，确保数据持久化
+>>>>>>> mobile-adaptive
         if db_fields:
             success = update_user_multiple_fields(username, db_fields)
             if success:
@@ -1054,6 +1263,11 @@ def update_profile(profile: UserProfile):
                         print(f"✅ [update_profile] 字段 {field} 单独更新成功")
                     except Exception as e:
                         print(f"⚠️ [update_profile] 字段 {field} 更新失败: {e}")
+<<<<<<< HEAD
+=======
+    except HTTPException:
+        raise  # 重新抛出 HTTPException
+>>>>>>> mobile-adaptive
     except Exception as e:
         error_msg = f"数据库更新异常: {str(e)}"
         print(f"❌ [update_profile] {error_msg}")
@@ -1066,16 +1280,21 @@ def update_profile(profile: UserProfile):
 # ==========================================
 #  核心功能 F: 简历医生 (诊断 + 生成)
 # ==========================================
+# 注意：此接口已被 /api/analyze_resume 替代，保留此接口仅用于向后兼容
 @app.post("/api/resume/analyze")
-async def analyze_resume(file: UploadFile = File(...)):
+async def analyze_resume_legacy(file: UploadFile = File(...)):
+    """
+    旧版简历分析接口（已废弃，请使用 /api/analyze_resume）
+    保留此接口仅用于向后兼容
+    """
     time.sleep(1.5)
-    print(f"收到简历诊断请求: {file.filename}")
+    print(f"收到简历诊断请求（旧版接口）: {file.filename}")
     
     # 核心：确保 score_rationale 存在
     return {
         "score": 82,
         "score_rationale": "✅ 基础分70。因项目使用了STAR法则+5分，技术栈匹配+10分；❌ 但缺少GitHub链接-3分。",
-        "summary": "简历结构清晰，技术栈覆盖全面，但‘量化成果’有待提升。",
+        "summary": "简历结构清晰，技术栈覆盖全面，但'量化成果'有待提升。",
         "strengths": ["教育背景优秀", "两段相关实习", "技术栈命中率高"],
         "weaknesses": ["缺乏具体性能数据", "自我评价泛泛", "无开源贡献"],
         "suggestions": ["补充性能对比数据", "增加熟练度描述", "添加 GitHub 链接"]
@@ -1138,6 +1357,7 @@ def change_password(req: ChangePwdRequest):
 # --- 5. 上传头像接口 ---
 @app.post("/api/user/avatar")
 async def upload_avatar(
+<<<<<<< HEAD
     avatar: UploadFile = File(...),  # 关键修复点：使用 File(...) 确保文件必须提供，字段名必须为 'avatar'
     username: str = Form(...)  # 关键修复点：使用 Form(...) 确保用户名必须提供，字段名必须为 'username'
 ):
@@ -1168,12 +1388,33 @@ async def upload_avatar(
         raise HTTPException(status_code=400, detail="缺少必需参数: username")
     
     # 1. 验证用户是否存在
+=======
+    avatar: UploadFile = File(...),  # 关键修复点：使用 avatar 作为参数名，与前端 FormData 字段名匹配
+    username: str = Form(...)
+):
+    """
+    上传用户头像接口
+    
+    接收图片文件，保存到服务器，返回可访问的 URL
+    同时更新数据库和 CSV 文件中的 avatar 字段
+    
+    请求格式：multipart/form-data
+    - avatar: 图片文件（必需）
+    - username: 用户名（必需）
+    """
+    import traceback
+    import uuid
+    from datetime import datetime
+    
+    print(f"✅ [upload_avatar] 收到头像上传请求，用户: {username}, 文件名: {avatar.filename if avatar else 'None'}")
+    
+    # 1. 验证用户是否存在
     user = get_user_by_username(username)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
     
     # 2. 验证文件类型
-    if not avatar.filename:
+    if not avatar or not avatar.filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")
     
     file_ext = os.path.splitext(avatar.filename)[1].lower()
@@ -1181,10 +1422,13 @@ async def upload_avatar(
     if file_ext not in allowed_exts:
         raise HTTPException(status_code=400, detail=f"不支持的文件格式，仅支持: {', '.join(allowed_exts)}")
     
-    # 3. 验证文件大小（限制 5MB）
+    # 3. 验证文件大小（限制 10MB）
     file_content = await avatar.read()
-    if len(file_content) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="文件大小不能超过 5MB")
+    file_size_mb = len(file_content) / (1024 * 1024)
+    print(f"📊 [upload_avatar] 文件大小: {file_size_mb:.2f} MB")
+    
+    if len(file_content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"文件大小不能超过 10MB，当前文件大小: {file_size_mb:.2f} MB")
     
     # 4. 生成唯一文件名（避免冲突）
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1195,6 +1439,171 @@ async def upload_avatar(
     # 确保目录存在
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     
+    # 5. 保存文件
+    try:
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_content)
+        print(f"✅ [upload_avatar] 文件保存成功: {file_path}")
+    except Exception as e:
+        print(f"❌ [upload_avatar] 文件保存失败: {e}")
+        raise HTTPException(status_code=500, detail=f"文件保存失败: {str(e)}")
+    
+    # 6. 生成可访问的 URL（使用相对路径，前端会拼接 API_BASE）
+    # 注意：使用相对路径，前端会根据 API_BASE 自动拼接完整 URL
+    avatar_url = f"/static/avatars/{safe_filename}"
+    
+    # 7. 更新数据库中的 avatar 字段（优先保存到数据库，确保持久化）
+    try:
+        # 生成完整 URL 用于数据库存储
+        base_url = os.getenv("BASE_URL", "https://ai-career-helper-backend-u1s0.onrender.com")
+        full_avatar_url = f"{base_url}{avatar_url}"
+        
+        success = update_user_field(username, "avatar", full_avatar_url)
+        if success:
+            print(f"✅ [upload_avatar] 数据库 avatar 字段更新成功: {full_avatar_url}")
+        else:
+            print(f"⚠️ [upload_avatar] 数据库 avatar 字段更新失败（可能字段不存在），但文件已保存")
+            # 即使数据库更新失败，文件已保存，继续返回成功
+    except Exception as e:
+        print(f"⚠️ [upload_avatar] 数据库更新异常: {e}")
+        print(f"⚠️ [upload_avatar] 错误堆栈: {traceback.format_exc()}")
+        # 数据库更新失败不影响文件上传，继续返回成功（文件已保存到服务器）
+    
+    # 8. 更新 CSV 文件中的 avatar 字段（保持兼容）
+    try:
+        csv_path = "data/profiles.csv"
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)  # 确保目录存在
+        
+        # 生成完整 URL 用于 CSV 存储
+        base_url = os.getenv("BASE_URL", "https://ai-career-helper-backend-u1s0.onrender.com")
+        full_avatar_url = f"{base_url}{avatar_url}"
+        
+        profiles = []
+        if os.path.exists(csv_path):
+            with open(csv_path, "r", encoding="utf-8-sig") as f:
+                reader = csv.DictReader(f)
+                profiles = list(reader)
+        
+        updated = False
+        for row in profiles:
+            if row.get('username') == username:
+                row['avatar'] = full_avatar_url
+                updated = True
+                break
+        
+        if not updated:
+            # 如果用户资料不存在，创建新记录
+            profiles.append({
+                'username': username,
+                'avatar': full_avatar_url,
+                'email': '',
+                'phone': '',
+                'city': '',
+                'style': '专业正式',
+                'file_format': 'PDF',
+                'notify': 'True',
+                'auto_save': 'True'
+            })
+        
+        with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
+            fieldnames = ["username", "avatar", "email", "phone", "city", "style", "file_format", "notify", "auto_save"]
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(profiles)
+        print(f"✅ [upload_avatar] CSV 文件 avatar 字段更新成功: {full_avatar_url}")
+    except Exception as e:
+        print(f"⚠️ [upload_avatar] CSV 文件更新异常: {e}")
+        print(f"⚠️ [upload_avatar] CSV 错误堆栈: {traceback.format_exc()}")
+        # CSV 更新失败不影响主流程
+    
+    # 9. 返回结果（返回完整 URL，前端可以直接使用）
+    base_url = os.getenv("BASE_URL", "https://ai-career-helper-backend-u1s0.onrender.com")
+    full_avatar_url = f"{base_url}{avatar_url}"
+    
+    return {
+        "success": True,
+        "code": 200,  # 兼容字段
+        "msg": "上传成功",  # 兼容字段
+        "avatarUrl": full_avatar_url,  # 兼容字段名（返回完整URL）
+        "avatar_url": full_avatar_url,
+        "avatar": full_avatar_url,  # 兼容字段名
+        "url": full_avatar_url,  # 兼容字段名（前端期望的字段）
+        "message": "头像上传成功"
+    }
+
+# --- 5.1. 头像上传接口别名（兼容前端路径） ---
+@app.post("/api/user/upload_avatar")
+async def upload_avatar_alias(
+    file: UploadFile = File(...),
+    username: str = Form(None)  # 允许为空，如果为空则从请求中获取
+):
+    """
+    头像上传接口别名，兼容前端路径 /api/user/upload_avatar
+    如果前端没有发送 username，尝试从请求中获取
+    """
+    # 如果 username 为空，尝试从请求头或其他地方获取
+    if not username:
+        # 这里可以尝试从 token 或其他方式获取，暂时使用默认值
+        # 或者要求前端必须发送 username
+        raise HTTPException(status_code=400, detail="缺少必需参数: username")
+    
+    # 调用主接口逻辑（复用代码）
+    import traceback
+    import uuid
+    from datetime import datetime
+    
+    print(f"✅ [upload_avatar_alias] 收到头像上传请求，用户: {username}, 文件名: {file.filename}")
+    
+    # 验证用户是否存在
+>>>>>>> mobile-adaptive
+    user = get_user_by_username(username)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+<<<<<<< HEAD
+    # 2. 验证文件类型
+    if not avatar.filename:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+    
+    file_ext = os.path.splitext(avatar.filename)[1].lower()
+=======
+    # 验证文件类型
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+    
+    file_ext = os.path.splitext(file.filename)[1].lower()
+>>>>>>> mobile-adaptive
+    allowed_exts = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+    if file_ext not in allowed_exts:
+        raise HTTPException(status_code=400, detail=f"不支持的文件格式，仅支持: {', '.join(allowed_exts)}")
+    
+<<<<<<< HEAD
+    # 3. 验证文件大小（限制 5MB）
+    file_content = await avatar.read()
+    if len(file_content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="文件大小不能超过 5MB")
+    
+    # 4. 生成唯一文件名（避免冲突）
+=======
+    # 验证文件大小（限制 10MB）
+    file_content = await file.read()
+    file_size_mb = len(file_content) / (1024 * 1024)
+    print(f"📊 [upload_avatar_alias] 文件大小: {file_size_mb:.2f} MB")
+    
+    if len(file_content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"文件大小不能超过 10MB，当前文件大小: {file_size_mb:.2f} MB")
+    
+    # 生成唯一文件名
+>>>>>>> mobile-adaptive
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_id = str(uuid.uuid4())[:8]
+    safe_filename = f"{username}_{timestamp}_{unique_id}{file_ext}"
+    file_path = os.path.join("static", "avatars", safe_filename)
+    
+    # 确保目录存在
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    
+<<<<<<< HEAD
     # 5. 保存文件
     try:
         with open(file_path, "wb") as buffer:
@@ -1262,16 +1671,93 @@ async def upload_avatar(
         # CSV 更新失败不影响主流程
     
     # 关键修复点：返回兼容格式，包含 code 和 msg 字段
+=======
+    # 保存文件
+    try:
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_content)
+        print(f"✅ [upload_avatar_alias] 文件保存成功: {file_path}")
+    except Exception as e:
+        print(f"❌ [upload_avatar_alias] 文件保存失败: {e}")
+        raise HTTPException(status_code=500, detail=f"文件保存失败: {str(e)}")
+    
+    # 生成可访问的 URL
+    base_url = os.getenv("BASE_URL", "https://ai-career-helper-backend-u1s0.onrender.com")
+    avatar_url = f"/static/avatars/{safe_filename}"
+    full_avatar_url = f"{base_url}{avatar_url}"
+    
+    # 更新数据库中的 avatar 字段
+    try:
+        success = update_user_field(username, "avatar", full_avatar_url)
+        if success:
+            print(f"✅ [upload_avatar_alias] 数据库 avatar 字段更新成功: {full_avatar_url}")
+        else:
+            print(f"⚠️ [upload_avatar_alias] 数据库 avatar 字段更新失败（可能字段不存在），但文件已保存")
+    except Exception as e:
+        print(f"⚠️ [upload_avatar_alias] 数据库更新异常: {e}")
+        print(f"⚠️ [upload_avatar_alias] 错误堆栈: {traceback.format_exc()}")
+    
+    # 更新 CSV 文件
+    try:
+        csv_path = "data/profiles.csv"
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+        profiles = []
+        if os.path.exists(csv_path):
+            with open(csv_path, "r", encoding="utf-8-sig") as f:
+                reader = csv.DictReader(f)
+                profiles = list(reader)
+        
+        updated = False
+        for row in profiles:
+            if row.get('username') == username:
+                row['avatar'] = full_avatar_url
+                updated = True
+                break
+        
+        if not updated:
+            profiles.append({
+                'username': username,
+                'avatar': full_avatar_url,
+                'email': '',
+                'phone': '',
+                'city': '',
+                'style': '专业正式',
+                'file_format': 'PDF',
+                'notify': 'True',
+                'auto_save': 'True'
+            })
+        
+        with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
+            fieldnames = ["username", "avatar", "email", "phone", "city", "style", "file_format", "notify", "auto_save"]
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(profiles)
+        print(f"✅ [upload_avatar_alias] CSV 文件 avatar 字段更新成功")
+    except Exception as e:
+        print(f"⚠️ [upload_avatar_alias] CSV 文件更新异常: {e}")
+    
+    # 返回结果（前端期望 url 字段）
+>>>>>>> mobile-adaptive
     return {
         "success": True,
         "code": 200,
         "msg": "上传成功",
+<<<<<<< HEAD
         "avatarUrl": avatar_url,  # 兼容字段名
         "avatar_url": avatar_url,
         "avatar": avatar_url,  # 兼容字段名
         "url": avatar_url,  # 兼容字段名
         "message": "头像上传成功"
     }
+=======
+        "url": full_avatar_url,  # 前端期望的字段
+        "avatarUrl": full_avatar_url,
+        "avatar_url": full_avatar_url,
+        "avatar": full_avatar_url,
+        "message": "头像上传成功"
+    }
+
+>>>>>>> mobile-adaptive
 @app.post("/api/resume/generate")
 def generate_resume(req: GenerateResumeRequest):
     time.sleep(1.5)
@@ -1744,8 +2230,10 @@ def generate_job_test(req: GenerateJobTestRequest):
 
 @app.post("/api/analyze_resume")
 async def analyze_resume(
-    resume_file: UploadFile = File(...),
+    resume_file: Optional[UploadFile] = File(None),  # 关键修复点：改为可选，支持文本输入
     resume_text: Optional[str] = Form(None),
+    username: Optional[str] = Form(None),  # 关键修复点：新增用户名参数，用于关联历史记录
+    resume_type: Optional[str] = Form("normal"),  # 关键修复点：新增简历类型参数（normal/vip）
 ):
     """
     简历诊断与优化接口
@@ -1772,7 +2260,12 @@ async def analyze_resume(
     
     print(f"✅ [analyze_resume] 收到简历分析请求")
     resume_file_name = resume_file.filename if resume_file and hasattr(resume_file, 'filename') else None
-    print(f"✅ [analyze_resume] 参数: resume_file={resume_file_name}, resume_text={'已提供' if resume_text else None}")
+    print(f"✅ [analyze_resume] 参数: resume_file={resume_file_name}, resume_text={'已提供' if resume_text else None}, username={username}, resume_type={resume_type}")
+    
+    # 关键调试信息：记录是否提供了用户名
+    if not username:
+        print(f"⚠️ [analyze_resume] 警告：未提供 username 参数，历史记录将不会保存！")
+        print(f"⚠️ [analyze_resume] 前端必须通过 FormData 传递 username 和 resume_type 参数")
     
     # 1. 提取简历文本内容
     resume_content = ""
@@ -1912,7 +2405,94 @@ async def analyze_resume(
             "（请补充具体的能力描述和职业目标）\n"
         )
     
-    # 3. 返回结果
+    # 3. 关键修复点：自动插入历史记录（如果提供了用户名）
+    # 注意：无论 AI 分析成功还是失败（降级模式），都要保存历史记录
+    resume_file_url = ""
+    if username:
+        print(f"🔄 [analyze_resume] 开始保存历史记录，用户名: {username}, 简历类型: {resume_type}")
+        try:
+            # 3.1 获取用户ID
+            user = get_user_by_username(username)
+            if not user:
+                print(f"❌ [analyze_resume] 用户 {username} 不存在，跳过历史记录插入")
+            else:
+                user_id = user.get('id') if isinstance(user, dict) else getattr(user, 'id', None)
+                
+                if not user_id:
+                    print(f"❌ [analyze_resume] 用户 {username} 的ID不存在，跳过历史记录插入")
+                else:
+                    print(f"✅ [analyze_resume] 获取到用户ID: {user_id}")
+                    
+                    # 3.2 保存简历文件（如果有文件上传）
+                    if resume_file:
+                        import uuid
+                        from datetime import datetime
+                        
+                        # 生成唯一文件名
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        unique_id = str(uuid.uuid4())[:8]
+                        file_ext = os.path.splitext(resume_file.filename)[1] if resume_file.filename else ".pdf"
+                        safe_filename = f"{username}_{timestamp}_{unique_id}{file_ext}"
+                        
+                        # 根据简历类型选择保存目录
+                        save_dir = "uploads/resumes/normal" if (resume_type == "normal" or not resume_type) else "uploads/resumes/vip"
+                        os.makedirs(save_dir, exist_ok=True)
+                        file_path = os.path.join(save_dir, safe_filename)
+                        
+                        # 保存文件（需要重新读取文件内容，因为之前已经读取过了）
+                        resume_file.file.seek(0)  # 重置文件指针
+                        file_content = await resume_file.read()
+                        with open(file_path, "wb") as f:
+                            f.write(file_content)
+                        
+                        # 生成文件URL
+                        base_url = os.getenv("BASE_URL", "https://ai-career-helper-backend-u1s0.onrender.com")
+                        resume_file_url = f"{base_url}/uploads/resumes/{resume_type or 'normal'}/{safe_filename}"
+                        print(f"✅ [analyze_resume] 简历文件保存成功: {resume_file_url}")
+                    elif resume_text:
+                        # 如果是文本输入，生成一个标识URL（用于历史记录）
+                        from datetime import datetime as dt
+                        resume_file_url = f"text_input_{username}_{dt.now().strftime('%Y%m%d_%H%M%S')}"
+                        print(f"✅ [analyze_resume] 文本输入模式，生成标识URL: {resume_file_url}")
+                    else:
+                        # 如果没有文件也没有文本，使用默认URL
+                        from datetime import datetime as dt
+                        resume_file_url = f"unknown_{username}_{dt.now().strftime('%Y%m%d_%H%M%S')}"
+                        print(f"⚠️ [analyze_resume] 无文件无文本，使用默认URL: {resume_file_url}")
+                    
+                    # 3.3 构建AI分析结果（JSON格式）
+                    # 关键修复点：确保即使 AI 分析失败（降级模式），也要保存历史记录
+                    ai_analysis_data = {
+                        "diagnosis_report": diagnosis_report,
+                        "optimized_resume": optimized_resume,
+                        "fallback": fallback_used
+                    }
+                    import json
+                    ai_analysis_str = json.dumps(ai_analysis_data, ensure_ascii=False)
+                    print(f"✅ [analyze_resume] AI分析结果已构建，长度: {len(ai_analysis_str)} 字符，降级模式: {fallback_used}")
+                    
+                    # 3.4 插入历史记录（关键修复点：无论成功失败都要尝试保存）
+                    print(f"🔄 [analyze_resume] 开始插入历史记录到数据库...")
+                    success, history_id = create_resume_history(
+                        user_id=user_id,
+                        resume_type=resume_type or "normal",
+                        resume_file_url=resume_file_url,
+                        ai_analysis=ai_analysis_str
+                    )
+                    
+                    if success:
+                        print(f"✅ [analyze_resume] 历史记录插入成功！记录ID: {history_id}, 用户ID: {user_id}, 简历类型: {resume_type}")
+                    else:
+                        print(f"❌ [analyze_resume] 历史记录插入失败！用户ID: {user_id}, 简历类型: {resume_type}")
+                        print(f"❌ [analyze_resume] 请检查数据库表 resume_history 是否存在，以及数据库连接是否正常")
+        except Exception as e:
+            print(f"❌ [analyze_resume] 插入历史记录异常: {e}")
+            print(f"❌ [analyze_resume] 错误堆栈: {traceback.format_exc()}")
+            # 历史记录插入失败不影响分析结果返回，但记录详细错误信息
+    else:
+        print(f"⚠️ [analyze_resume] 未提供用户名（username），跳过历史记录保存")
+    
+    # 4. 返回结果
     return {
         "success": True,
         "diagnosis_report": diagnosis_report,

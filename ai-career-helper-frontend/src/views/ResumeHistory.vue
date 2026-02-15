@@ -1,14 +1,24 @@
 <template>
   <div class="resume-history">
     <!-- 页面头部 -->
+<<<<<<< HEAD
     <el-page-header @back="$router.go(-1)" content="简历历史记录" style="margin-bottom: 20px;">
       <template #content>
         <span style="font-size: 20px; font-weight: 600; color: #165DFF;">简历历史记录</span>
+=======
+    <el-page-header @back="handleBack" style="margin-bottom: 20px;">
+      <template #content>
+        <span style="font-size: 20px; font-weight: 600; color: #165DFF;">📋 简历历史记录</span>
+>>>>>>> mobile-adaptive
       </template>
     </el-page-header>
 
     <!-- 历史记录列表 -->
+<<<<<<< HEAD
     <el-card v-loading="loading" shadow="hover">
+=======
+    <el-card v-loading="loading" shadow="hover" class="history-card">
+>>>>>>> mobile-adaptive
       <template #header>
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-size: 16px; font-weight: 600;">我的简历分析记录</span>
@@ -24,9 +34,16 @@
         border 
         style="width: 100%"
         :empty-text="loading ? '加载中...' : '暂无简历上传记录'"
+<<<<<<< HEAD
       >
         <el-table-column type="index" label="序号" width="60" align="center" />
         <el-table-column prop="created_at" label="上传时间" width="200" align="center">
+=======
+        stripe
+      >
+        <el-table-column type="index" label="序号" width="60" align="center" />
+        <el-table-column prop="created_at" label="上传时间" width="200" align="center" sortable>
+>>>>>>> mobile-adaptive
           <template #default="scope">
             <span>{{ formatDate(scope.row.created_at) }}</span>
           </template>
@@ -63,7 +80,11 @@
       <!-- 空数据提示 -->
       <div v-if="historyList.length === 0 && !loading" class="empty-tip">
         <el-empty description="暂无简历上传记录">
+<<<<<<< HEAD
           <el-button type="primary" @click="$router.push('/app')">
+=======
+          <el-button type="primary" @click="goToResumeDoctor">
+>>>>>>> mobile-adaptive
             去上传简历
           </el-button>
         </el-empty>
@@ -141,8 +162,17 @@ import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { View, Download, Refresh, Document } from '@element-plus/icons-vue'
+<<<<<<< HEAD
 import MarkdownIt from 'markdown-it'
 
+=======
+import { useRouter } from 'vue-router'
+import MarkdownIt from 'markdown-it'
+
+// 路由
+const router = useRouter()
+
+>>>>>>> mobile-adaptive
 // API 配置
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://ai-career-helper-backend-u1s0.onrender.com'
 console.debug('[ResumeHistory] API_BASE ->', API_BASE)
@@ -194,6 +224,11 @@ const getHistoryList = async () => {
       historyList.value = res.data.data || []
       if (historyList.value.length === 0) {
         ElMessage.info('暂无历史记录')
+<<<<<<< HEAD
+=======
+      } else {
+        ElMessage.success(`加载成功，共 ${historyList.value.length} 条记录`)
+>>>>>>> mobile-adaptive
       }
     } else {
       ElMessage.error(res.data.msg || '获取历史记录失败')
@@ -365,6 +400,19 @@ const formatAnalysis = (analysis) => {
   }
 }
 
+<<<<<<< HEAD
+=======
+// 返回上一页
+const handleBack = () => {
+  router.go(-1)
+}
+
+// 跳转到简历医生
+const goToResumeDoctor = () => {
+  router.push('/app')
+}
+
+>>>>>>> mobile-adaptive
 // 页面初始化
 onMounted(() => {
   getHistoryList()
@@ -378,6 +426,13 @@ onMounted(() => {
   background: #f5f7fa;
 }
 
+<<<<<<< HEAD
+=======
+.history-card {
+  margin-top: 20px;
+}
+
+>>>>>>> mobile-adaptive
 .empty-tip {
   text-align: center;
   padding: 60px 20px;

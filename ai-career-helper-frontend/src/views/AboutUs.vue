@@ -5,10 +5,17 @@
       <el-button type="link" @click="$router.go(-1)" style="margin-bottom: 20px; color: #165DFF;">
         ← 回到上一页
       </el-button>
+<<<<<<< HEAD
       <!-- Slogan 图片区域（蓝色渐变背景，与探索页一致） -->
       <div class="slogan-container">
         <img 
           src="/images/slogan-main_浅色.png" 
+=======
+      <!-- Slogan 图片 -->
+      <div style="text-align: center; margin: 20px 0 30px;">
+        <img 
+          src="/images/slogan-main_深色.png" 
+>>>>>>> mobile-adaptive
           alt="职航——AI辅助的大学生生涯成长平台" 
           class="slogan-image"
         >
@@ -93,6 +100,7 @@ p {
 ul li {
   margin: 8px 0;
 }
+<<<<<<< HEAD
 
 /* Slogan 图片容器：复用探索页蓝色渐变背景 */
 .slogan-container {
@@ -119,14 +127,25 @@ ul li {
 .slogan-image:hover {
   filter: contrast(1.15) brightness(1.15);
   transform: scale(1.01);
+=======
+/* Slogan 图片样式 */
+.slogan-image {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+>>>>>>> mobile-adaptive
 }
 
 /* 适配小屏幕/移动端 */
 @media (max-width: 768px) {
+<<<<<<< HEAD
   .slogan-container {
     padding: 30px 15px;
     margin: 20px -15px 25px -15px;
   }
+=======
+>>>>>>> mobile-adaptive
   .slogan-image {
     max-width: 90%;
   }
