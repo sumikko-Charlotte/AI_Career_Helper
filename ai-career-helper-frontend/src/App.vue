@@ -39,6 +39,18 @@ console.debug('[App] API_BASE ->', API_BASE)
 const currentUser = ref(null)
 const activeMenu = ref('0')
 
+
+// 手机端侧边栏开关控制
+const isSidebarOpen = ref(false)
+
+// 监听侧边栏状态，动态添加/移除 body 类名
+watch(isSidebarOpen, (newVal) => {
+  if (newVal) {
+    document.body.classList.add('sidebar-open')
+  } else {
+    document.body.classList.remove('sidebar-open')
+  }
+})
 // 如果路由携带 focus 参数（例如来自 /explore 的跳转），则将主界面聚焦到对应功能
 // 处理来自 /explore 的一次性聚焦参数（可在首次加载或运行时实时响应）
 const applyFocus = (f) => {
@@ -2438,7 +2450,11 @@ onBeforeUnmount(() => {
   
       <el-container class="app-main">
         <el-header class="topbar">
-          <div class="topbar-left">
+          <!-- 汉堡菜单按钮（手机端显示） -->
+          <button class=\"mobile-menu-toggle\" @click=\"isSidebarOpen = !isSidebarOpen\">
+            ☰
+          </button>
+                    <div class="topbar-left">
             <div class="topbar-title">
   {{
     activeMenu === '0' ? '生涯路径规划' :
@@ -3599,7 +3615,157 @@ onBeforeUnmount(() => {
   }
   
   .animate-fade { animation: fadeIn 0.5s ease; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }</style>
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+/* ====================================== */
+/* 手机端布局适配（只在手机上生效） */
+/* ====================================== */
+@media (max-width: 768px) {
+  /* 1. 基础布局：防止横向滚动 */
+  .app-shell,
+  .page,
+  body,
+  html {
+    width: 100vw;
+    max-width: 100vw;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  /* 2. 侧边栏：默认隐藏，点击后滑入 */
+  .app-aside,
+  :deep(.el-aside),
+  .side-menu,
+  .brand,
+  .aside-footer {
+    position: fixed;
+    top: 0;
+    left: -100%; /* 默认滑出屏幕外 */
+    width: 75vw !important;
+    height: 100vh !important;
+    z-index: 9999;
+    transition: left 0.3s ease;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+  }
+
+  /* 3. 侧边栏打开时的状态 */
+  body.sidebar-open .app-aside,
+  body.sidebar-open :deep(.el-aside),
+  body.sidebar-open .side-menu {
+    left: 0; /* 滑入屏幕 */
+  }
+
+  /* 4. 主内容区：全屏显示 */
+  .app-main,
+  :deep(.el-main) {
+    width: 100% !important;
+    margin-left: 0 !important;
+    padding: 3vw !important;
+    min-width: 0 !important;
+  }
+
+  /* 5. Element Plus 容器适配 */
+  :deep(.el-container) {
+    flex-direction: column !important;
+    overflow-x: hidden !important;
+  }
+
+  /* 6. 顶部栏适配 */
+  .topbar {
+    width: 100% !important;
+    padding: 3vw 4vw !important;
+    min-height: 12vw !important;
+    display: flex;
+    align-items: center;
+    gap: 3vw;
+  }
+
+  /* 7. 汉堡按钮样式（只在手机上显示） */
+  .mobile-menu-toggle {
+    display: block !important;
+    font-size: 6vw;
+    background: none;
+    border: none;
+    color: #333;
+    cursor: pointer;
+    padding: 2vw;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  
+  .mobile-menu-toggle:hover {
+    opacity: 0.7;
+  }
+
+  /* 8. 侧边栏打开时的遮罩层 */
+  body.sidebar-open::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9998;
+    animation: fadeIn 0.3s ease;
+  }
+
+  /* 9. 页面内容适配 */
+  .page {
+    padding: 3vw !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    box-sizing: border-box;
+  }
+
+  /* 10. 字体大小适配（使用 vw 单位） */
+  .topbar-title {
+    font-size: 4.5vw !important;
+  }
+
+  .topbar-tag {
+    font-size: 3vw !important;
+  }
+
+  /* 11. 按钮和输入框适配 */
+  button,
+  .el-button {
+    font-size: 3.5vw !important;
+    padding: 2vw 4vw !important;
+  }
+
+  input,
+  .el-input__inner {
+    font-size: 3.5vw !important;
+    padding: 2vw 3vw !important;
+  }
+}
+
+/* 电脑端：隐藏汉堡按钮 */
+@media (min-width: 769px) {
+  .mobile-menu-toggle {
+    display: none !important;
+  }
+  
+  /* 确保电脑端布局不受影响 */
+  .app-aside,
+  :deep(.el-aside) {
+    position: relative !important;
+    left: auto !important;
+    width: 260px !important;
+  }
+  
+  .app-main,
+  :deep(.el-main) {
+    margin-left: 0 !important;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+</style>
   /* --- 岗位投递卡片样式 --- */
 .job-card-list {
   margin-top: 12px;
