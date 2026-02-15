@@ -1,13 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
-<<<<<<< HEAD
-import { Clock, Document, View, Download, Refresh } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-=======
 import { Clock, Document, Star, View, Delete, Download, Refresh, Collection } from '@element-plus/icons-vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
->>>>>>> mobile-adaptive
 import MarkdownIt from 'markdown-it'
 
 // Markdown 渲染器
@@ -19,21 +14,7 @@ const md = new MarkdownIt({
 
 const loading = ref(false)
 const historyList = ref([])
-<<<<<<< HEAD
-const detailVisible = ref(false)
-const detailLoading = ref(false)
-const currentDetail = ref({})
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://ai-career-helper-backend-u1s0.onrender.com'
-console.debug('[HistoryRecord] API_BASE ->', API_BASE)
 
-// 获取当前登录用户名
-const getCurrentUsername = () => {
-  try {
-    const loginUserStr = localStorage.getItem('login_user') || sessionStorage.getItem('login_user')
-    if (loginUserStr) {
-      const loginUser = JSON.parse(loginUserStr)
-      return loginUser.username || localStorage.getItem('remembered_username')
-    }
     return localStorage.getItem('remembered_username')
   } catch (e) {
     console.warn('[HistoryRecord] 获取用户名失败:', e)
@@ -71,7 +52,6 @@ const loadHistoryRecords = async () => {
       ElMessage.error('服务器错误，请稍后重试')
     } else {
       ElMessage.error('获取历史记录失败，请检查网络连接')
-=======
 const uploadedKeys = ref([])
 const UP_KEY = 'uploaded_resume_tasks'
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'https://ai-career-helper-backend-u1s0.onrender.com'
@@ -112,27 +92,21 @@ const fetchHistory = async () => {
     const res = await axios.get(`${API_BASE}/api/history`, { params: { username } })
     if (res.data.success) {
       historyList.value = res.data.data
->>>>>>> mobile-adaptive
     }
   } finally {
     loading.value = false
   }
 }
 
-<<<<<<< HEAD
 // 查看详情
 const viewDetail = async (row) => {
-=======
 // 获取简历历史记录列表（新增功能）
 const getResumeHistoryList = async () => {
->>>>>>> mobile-adaptive
   const username = getCurrentUsername()
   if (!username) {
     ElMessage.warning('请先登录')
     return
   }
-<<<<<<< HEAD
-=======
 
   resumeHistoryLoading.value = true
   try {
@@ -172,6 +146,10 @@ const getCurrentUsername = () => {
     }
     return localStorage.getItem('remembered_username')
   } catch (e) {
+    console.warn('[HistoryRecord] 获取用户名失败:', e)
+    return localStorage.getItem('remembered_username')
+  }
+} catch (e) {
     console.warn('[HistoryRecord] 获取用户名失败:', e)
     return localStorage.getItem('remembered_username')
   }
@@ -350,7 +328,6 @@ const confirmUploadToggle = async (item, toOn) => {
     try {
       await ElMessageBox.confirm('确认将该记录上传至 Admin？上传后会在 Admin 端展示，并在 CSV 中计入统计。', '确认上传', { type: 'warning' })
     } catch { return }
->>>>>>> mobile-adaptive
 
   detailLoading.value = true
   detailVisible.value = true
@@ -498,14 +475,10 @@ const refreshList = () => {
 }
 
 onMounted(() => {
-<<<<<<< HEAD
-  loadHistoryRecords()
-=======
   // 默认加载简历历史记录
   getResumeHistoryList()
   // 同时加载旧版历史记录（如果需要）
   // fetchHistory()
->>>>>>> mobile-adaptive
 })
 </script>
 
@@ -516,113 +489,6 @@ onMounted(() => {
       <p class="subtitle">查看您所有的简历润色与诊断记录存档</p>
     </div>
 
-<<<<<<< HEAD
-    <el-card v-loading="loading" class="history-card">
-      <template #header>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 16px; font-weight: 600;">我的简历诊断记录</span>
-          <el-button type="primary" size="small" @click="refreshList" :icon="Refresh">
-            刷新
-          </el-button>
-        </div>
-      </template>
-
-      <el-table 
-        :data="historyList" 
-        border 
-        style="width: 100%"
-        :empty-text="loading ? '加载中...' : '暂无历史诊断记录，快去诊断一份简历吧！'"
-        stripe
-      >
-        <el-table-column type="index" label="序号" width="60" align="center" />
-        <el-table-column prop="created_at" label="上传时间" width="200" align="center" sortable>
-          <template #default="scope">
-            <span>{{ formatDate(scope.row.created_at) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="resume_type" label="简历类型" width="120" align="center">
-          <template #default="scope">
-            <el-tag :type="scope.row.resume_type === 'vip' ? 'danger' : 'primary'" size="large">
-              {{ scope.row.resume_type === 'vip' ? 'VIP版' : '普通版' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="resume_file_url" label="简历文件" min-width="200">
-          <template #default="scope">
-            <span v-if="scope.row.resume_file_url && !scope.row.resume_file_url.startsWith('text_input_')">
-              {{ getFileName(scope.row.resume_file_url) }}
-            </span>
-            <el-tag v-else type="info" size="small">文本输入</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="180" align="center" fixed="right">
-          <template #default="scope">
-            <el-button 
-              type="primary" 
-              size="small" 
-              @click="viewDetail(scope.row)"
-              :icon="View"
-            >
-              查看详情
-            </el-button>
-            <el-button 
-              v-if="scope.row.resume_file_url && !scope.row.resume_file_url.startsWith('text_input_')"
-              type="success" 
-              size="small" 
-              @click="downloadResume(scope.row.resume_file_url)"
-              :icon="Download"
-            >
-              下载
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <div v-if="historyList.length === 0 && !loading" class="empty-tip">
-        <el-empty description="暂无历史诊断记录，快去诊断一份简历吧！">
-          <el-button type="primary" @click="$router.push('/app')">去上传简历</el-button>
-        </el-empty>
-      </div>
-    </el-card>
-
-    <!-- 详情弹窗 -->
-    <el-dialog
-      v-model="detailVisible"
-      title="简历诊断详情"
-      width="85%"
-      top="5vh"
-      :close-on-click-modal="false"
-      destroy-on-close
-    >
-      <div v-loading="detailLoading" class="detail-content">
-        <!-- 基本信息 -->
-        <div class="info-section">
-          <el-descriptions :column="2" border>
-            <el-descriptions-item label="上传时间">
-              {{ formatDate(currentDetail.created_at) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="简历类型">
-              <el-tag :type="currentDetail.resume_type === 'vip' ? 'danger' : 'primary'">
-                {{ currentDetail.resume_type === 'vip' ? 'VIP版' : '普通版' }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="简历文件" :span="2">
-              <span v-if="currentDetail.resume_file_url && !currentDetail.resume_file_url.startsWith('text_input_')">
-                {{ getFileName(currentDetail.resume_file_url) }}
-                <el-button 
-                  type="primary" 
-                  size="small" 
-                  style="margin-left: 10px;"
-                  @click="downloadResume(currentDetail.resume_file_url)"
-                  :icon="Download"
-                >
-                  下载简历
-                </el-button>
-              </span>
-              <el-tag v-else type="info">文本输入（无文件）</el-tag>
-            </el-descriptions-item>
-          </el-descriptions>
-=======
     <!-- 标签页切换 -->
     <el-tabs v-model="activeTab" @tab-change="handleTabChange" class="history-tabs">
       <el-tab-pane label="简历历史记录" name="resume">
@@ -671,22 +537,9 @@ onMounted(() => {
               </div>
             </div>
           </div>
->>>>>>> mobile-adaptive
         </div>
       </el-tab-pane>
 
-<<<<<<< HEAD
-        <!-- AI分析内容 -->
-        <div class="analysis-section">
-          <h3 style="margin: 20px 0 15px; color: #165DFF; font-size: 18px; font-weight: 600;">
-            <el-icon style="vertical-align: middle; margin-right: 5px;"><Document /></el-icon>
-            AI 分析报告
-          </h3>
-          <div 
-            class="analysis-content" 
-            v-html="formatAnalysis(currentDetail.ai_analysis)"
-          ></div>
-=======
       <el-tab-pane label="旧版历史记录" name="old">
         <div v-loading="loading" class="record-list">
           <el-empty v-if="historyList.length === 0" description="暂无历史记录，快去诊断一份简历吧！" />
@@ -719,7 +572,6 @@ onMounted(() => {
               </div>
             </div>
           </div>
->>>>>>> mobile-adaptive
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -820,10 +672,6 @@ onMounted(() => {
   margin: 0;
 }
 
-<<<<<<< HEAD
-.history-card {
-  margin-top: 20px;
-=======
 .history-tabs {
   margin-bottom: 20px;
 }
@@ -833,7 +681,6 @@ onMounted(() => {
   flex-direction: column;
   gap: 15px;
   min-height: 200px;
->>>>>>> mobile-adaptive
 }
 
 .empty-tip {
@@ -877,16 +724,15 @@ onMounted(() => {
   margin-bottom: 10px;
 }
 
-<<<<<<< HEAD
-.analysis-content :deep(p) {
-  margin: 10px 0;
-=======
 .card-left {
   display: flex;
   align-items: center;
   gap: 20px;
   flex: 1;
->>>>>>> mobile-adaptive
+}
+
+.analysis-content :deep(p) {
+  margin: 10px 0;
 }
 
 .analysis-content :deep(ul),
@@ -928,12 +774,6 @@ onMounted(() => {
   border-radius: 4px;
 }
 
-<<<<<<< HEAD
-.optimized-resume {
-  padding: 15px;
-  background: #f9fafb;
-  border-radius: 4px;
-=======
 .actions {
   display: flex;
   gap: 10px;
@@ -948,7 +788,12 @@ onMounted(() => {
 
 .animate-up {
   animation: fadeUp 0.5s ease-out;
->>>>>>> mobile-adaptive
+}
+
+.optimized-resume {
+  padding: 15px;
+  background: #f9fafb;
+  border-radius: 4px;
 }
 
 /* 响应式适配 */
@@ -961,8 +806,6 @@ onMounted(() => {
     max-height: 60vh;
   }
 }
-<<<<<<< HEAD
-=======
 
 /* 详情弹窗样式 */
 .detail-content {
@@ -1065,5 +908,4 @@ onMounted(() => {
     right: 20px;
   }
 }
->>>>>>> mobile-adaptive
 </style>
