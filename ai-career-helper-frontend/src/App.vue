@@ -3829,6 +3829,7 @@ onBeforeUnmount(() => {
     padding: 2.67vw 4.8vw;
     height: auto;
     min-height: 12.8vw;
+    width: 100% !important;
   }
   
   .topbar-title {
