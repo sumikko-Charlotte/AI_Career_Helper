@@ -2451,7 +2451,7 @@ onBeforeUnmount(() => {
       <el-container class="app-main">
         <el-header class="topbar">
           <!-- 汉堡菜单按钮（手机端显示） -->
-          <button class=\"mobile-menu-toggle\" @click=\"isSidebarOpen = !isSidebarOpen\">
+          <button class="mobile-menu-toggle" @click="isSidebarOpen = !isSidebarOpen">
             ☰
           </button>
                     <div class="topbar-left">
