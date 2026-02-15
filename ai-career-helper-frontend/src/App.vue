@@ -3611,438 +3611,187 @@ onBeforeUnmount(() => {
   }
   
   .animate-fade { animation: fadeIn 0.5s ease; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }</style>
-  /* --- 岗位投递卡片样式 --- */
-.job-card-list {
-  margin-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.job-card-item {
-  background: #f0f9eb; /* 浅绿色背景 */
-  border: 1px solid #e1f3d8;
-  padding: 12px;
-  border-radius: 8px;
-  display: flex;
-  justify-content: space-between; /* 左右对齐 */
-  align-items: center;
-}
-
-.job-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.job-name {
-  font-weight: bold;
-  color: #333;
-  font-size: 14px;
-}
-
-.job-salary {
-  font-size: 12px;
-  color: #f56c6c; /* 红色高亮薪资 */
-  font-weight: bold;
-}
-/* --- 新增：投递成功提示字样式 --- */
-.apply-success-text {
-  font-size: 12px;
-  color: #67C23A; /* Element Plus 的成功绿色 */
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  animation: fadeIn 0.5s ease;
-}
-
-/* 让图标稍微对齐一下 */
-.apply-success-text .el-icon {
-  font-size: 14px;
-}
-/* --- 生涯规划 Pro 样式 --- */
-.control-area {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  margin-bottom: 20px;
-}
-.filter-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-.score-panel {
-  border-top: 1px solid #eee;
-  padding-top: 15px;
-  animation: fadeIn 0.6s ease;
-}
-.score-info {
-  margin-bottom: 10px;
-}
-.score-info .label {
-  font-size: 13px;
-  color: #666;
-  margin-bottom: 6px;
-  font-weight: bold;
-}
-.skill-tags {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.tag-label { font-size: 12px; color: #999; }
-
-.timeline-area {
-  padding: 10px 5px;
-}
-.timeline-card {
-  padding: 16px;
-  background: white;
-  border-radius: 12px;
-  border: 1px solid #e4e7ed;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
-  transition: all 0.3s;
-}
-.timeline-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.1);
-}
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-.card-header h4 { margin: 0; font-size: 16px; color: #303133; }
-.tags-row { display: flex; gap: 6px; }
-.content-text { color: #606266; line-height: 1.6; font-size: 14px; margin-bottom: 12px; }
-
-.resources-box {
-  background: #fdf6ec; /* 浅橙色背景 */
-  padding: 10px;
-  border-radius: 6px;
-  border-left: 3px solid #e6a23c;
-}
-.res-label {
-  font-size: 12px;
-  color: #d48806;
-  font-weight: bold;
-  margin-bottom: 6px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.res-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.res-link {
-  font-size: 12px;
-  color: #606266;
-  background: rgba(255,255,255,0.6);
-  padding: 2px 8px;
-  border-radius: 4px;
-}/* --- 智能版生涯规划 CSS --- */
-.control-bar {
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-  padding: 20px;
-  margin-bottom: 30px;
-  background: white;
-}
-.control-input { width: 180px; }
-
-.dashboard-card { background: white; padding: 20px; height: 100%; }
-.roadmap-timeline-card { background: white; padding: 20px; min-height: 500px; }
-.card-title { font-size: 18px; font-weight: bold; margin-bottom: 20px; color: #303133; border-left: 4px solid #409EFF; padding-left: 10px; }
-
-.radar-chart-box { width: 100%; height: 300px; margin-bottom: 10px; }
-
-.ai-insight {
-  background: linear-gradient(135deg, #f0f9eb 0%, #e1f3d8 100%);
-  padding: 15px;
-  border-radius: 8px;
-  border: 1px solid #c2e7b0;
-}
-.insight-title { color: #67C23A; font-weight: bold; margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
-.ai-insight p { color: #606266; font-size: 13px; line-height: 1.6; margin: 0; }
-
-/* 时间轴样式 */
-.timeline-box {
-  background: #f8f9fa;
-  padding: 15px;
-  border-radius: 8px;
-  border: 1px solid #eee;
-  transition: all 0.3s;
-}
-.timeline-box:hover { transform: translateX(5px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-.active-node {
-  background: #ecf5ff;
-  border-color: #b3d8ff;
-  box-shadow: 0 4px 12px rgba(64,158,255,0.15);
-}
-
-.node-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
-.time-tag { font-weight: bold; color: #409EFF; }
-.node-title { font-weight: bold; color: #303133; font-size: 15px; }
-.node-content { color: #606266; font-size: 14px; margin-bottom: 10px; }
-
-.node-resources { 
-  display: flex; 
-  align-items: flex-start; 
-  gap: 10px; 
-  border-top: 1px dashed #e4e7ed; 
-  padding-top: 10px; 
-  margin-top: 10px;
-  flex-direction: column;
-}
-.res-label { font-size: 12px; color: #909399; font-weight: 600; margin-bottom: 6px; }
-.res-chips { display: flex; gap: 8px; flex-wrap: wrap; }
-.res-chip {
-  font-size: 12px; color: #606266; background: #f0f9ff; border: 1px solid #b3d8ff;
-  padding: 4px 10px; border-radius: 12px;
-}
-
-/* 证书样式 */
-.node-certificates {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  border-top: 1px dashed #e4e7ed;
-  padding-top: 10px;
-  margin-top: 10px;
-  flex-direction: column;
-}
-.cert-label { font-size: 12px; color: #909399; font-weight: 600; margin-bottom: 6px; }
-.cert-chips { display: flex; gap: 8px; flex-wrap: wrap; }
-.cert-chip {
-  font-size: 12px; color: #e6a23c; background: #fdf6ec; border: 1px solid #f5dab1;
-  padding: 4px 10px; border-radius: 12px;
-}
-
-/* 推荐企业样式 */
-.node-companies {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  border-top: 1px dashed #e4e7ed;
-  padding-top: 10px;
-  margin-top: 10px;
-  flex-direction: column;
-}
-.company-label { font-size: 12px; color: #909399; font-weight: 600; margin-bottom: 6px; }
-.company-chips { display: flex; gap: 8px; flex-wrap: wrap; }
-.company-chip {
-  font-size: 12px; color: #67c23a; background: #f0f9eb; border: 1px solid #c2e7b0;
-  padding: 4px 10px; border-radius: 12px;
-  font-weight: 500;
-}
-
-.empty-state-box { text-align: center; padding: 60px; color: #909399; }
-.empty-emoji { font-size: 60px; margin-bottom: 20px; }
-/* --- 生涯规划控制栏 Pro 样式 --- */
-
-/* 1. 外层容器：左右布局，增加投影和圆角 */
-.control-bar-pro {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 24px 30px;
-  margin-bottom: 30px;
-  background: rgba(255, 255, 255, 0.95); /* 磨砂白 */
-  backdrop-filter: blur(10px);
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(149, 157, 165, 0.1); /* 柔和投影 */
-  border: 1px solid rgba(255, 255, 255, 0.6);
-}
-
-/* 2. 左侧标题区 */
-.control-left {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.control-title {
-  font-size: 18px;
-  font-weight: 800;
-  color: #303133;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.icon-pulse {
-  color: #409EFF;
-  animation: pulse 2s infinite;
-}
-.control-subtitle {
-  font-size: 13px;
-  color: #909399;
-  letter-spacing: 0.5px;
-}
-
-/* 3. 右侧操作区：弹性布局，防止重叠 */
-.control-right {
-  display: flex;
-  align-items: center;
-  gap: 16px; /* 控件之间的间距 */
-}
-
-/* 下拉框样式优化 */
-.select-item {
-  width: 180px; /* 增加宽度，防止文字截断 */
-  transition: all 0.3s;
-}
-.select-item:hover {
-  transform: translateY(-2px); /* 悬浮微动效 */
-}
-
-/* 按钮样式优化 */
-.generate-btn {
-  padding: 0 24px;
-  font-weight: 600;
-  background: linear-gradient(135deg, #409EFF 0%, #3a8ee6 100%);
-  border: none;
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
-  transition: all 0.3s;
-}
-.generate-btn:hover {
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 6px 16px rgba(64, 158, 255, 0.4);
-}
-
-/* 定义简单的呼吸动画 */
-@keyframes pulse {
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.1); opacity: 0.8; }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-/* 📱 适配手机端：如果是小屏幕，自动变成竖排 */
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+/* ==========================================
+   移动端自适应样式（vw/vh + flex 布局）
+   ========================================== */
 @media (max-width: 768px) {
+  /* 基础布局适配 */
+  .app-shell {
+    width: 100vw;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+  
+  .page {
+    padding: 2.67vw;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
+  }
+  
+  /* 模拟面试聊天页面适配 */
+  .chat-shell {
+    height: calc(100vh - 50vw);
+    min-height: 50vh;
+    border-radius: 4.27vw;
+    padding: 2.67vw;
+    box-sizing: border-box;
+  }
+  
+  .chat-window-el {
+    padding: 4.8vw 4.27vw;
+    border-radius: 4.27vw;
+  }
+  
+  .msg-row {
+    gap: 2.67vw;
+    margin: 3.73vw 0;
+  }
+  
+  .bubble {
+    max-width: 85%;
+    padding: 3.2vw 3.73vw;
+    border-radius: 3.73vw;
+    box-shadow: 0 2.67vw 6.4vw rgba(15,23,42,0.08);
+  }
+  
+  .bubble-name {
+    font-size: 3.2vw;
+    margin-bottom: 1.6vw;
+  }
+  
+  .bubble-text {
+    font-size: 3.73vw;
+    line-height: 1.6;
+  }
+  
+  .input-area {
+    padding: 3.73vw;
+    border-radius: 0 0 4.27vw 4.27vw;
+  }
+  
+  .chat-input {
+    font-size: 3.73vw;
+    padding: 2.67vw 3.73vw;
+    border-radius: 2.13vw;
+  }
+  
+  /* 按钮适配 */
+  .end-interview-button,
+  .send-button {
+    padding: 2.67vw 5.33vw;
+    font-size: 3.73vw;
+    border-radius: 2.13vw;
+    min-height: 10.67vw;
+  }
+  
+  /* 控制栏适配 */
   .control-bar-pro {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 20px;
+    gap: 5.33vw;
+    padding: 4vw;
   }
+  
   .control-right {
     width: 100%;
     flex-direction: column;
-    gap: 12px;
+    gap: 3.2vw;
   }
-  .select-item, .generate-btn {
-    width: 100% !important;
+  
+  /* 性别选择区域适配 */
+  .gender-selection-area {
+    margin-bottom: 5.33vw;
+    padding: 5.33vw;
+    border-radius: 3.2vw;
+  }
+  
+  .gender-selection-title {
+    font-size: 4.27vw;
+    margin-bottom: 4.27vw;
+  }
+  
+  .gender-selection-buttons {
+    gap: 4.27vw;
+    flex-wrap: wrap;
+  }
+  
+  /* 侧边栏适配 */
+  .side-menu {
+    width: 100%;
+    max-width: 100vw;
+  }
+  
+  .brand-title {
+    font-size: 3.73vw;
+  }
+  
+  .brand-subtitle {
+    font-size: 3.2vw;
+  }
+  
+  /* 顶部栏适配 */
+  .topbar {
+    padding: 2.67vw 4.8vw;
+    height: auto;
+    min-height: 12.8vw;
+  }
+  
+  .topbar-title {
+    font-size: 4.27vw;
+  }
+  
+  .topbar-tag {
+    font-size: 3.2vw;
+  }
+  
+  /* 回答技巧提示框适配 */
+  .guide-tip-box {
+    margin-top: 2.67vw;
+    padding: 2.13vw 3.2vw;
+    font-size: 3.2vw;
+    border-radius: 2.13vw;
+  }
+  
+  /* 报告卡片适配 */
+  .report-card {
+    padding: 4vw;
+    border-radius: 4.27vw;
+    margin-top: 4vw;
+  }
+  
+  /* 确保没有横向滚动 */
+  * {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  
+  body, html {
+    overflow-x: hidden;
+    width: 100%;
   }
 }
-/* AI 按钮特效 */
-.ai-jump-btn {
-  background: linear-gradient(135deg, #FF4B4B 0%, #FF914D 100%); /* Streamlit 风格渐变红 */
-  color: white;
-  border: none;
-  padding: 8px 18px;
-  border-radius: 20px; /* 圆角 */
-  font-weight: bold;
-  cursor: pointer;
-  margin-left: 15px; /* 和左边的按钮拉开点距离 */
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 6px rgba(255, 75, 75, 0.2);
+
+/* 超小屏幕适配（375px 以下） */
+@media (max-width: 375px) {
+  .bubble {
+    max-width: 90%;
+    padding: 2.67vw 3.2vw;
+    font-size: 3.47vw;
+  }
+  
+  .bubble-text {
+    font-size: 3.47vw;
+  }
+  
+  .chat-input {
+    font-size: 3.47vw;
+    padding: 2.4vw 3.2vw;
+  }
+  
+  .page {
+    padding: 2.4vw;
+  }
 }
 
-.ai-jump-btn:hover {
-  transform: translateY(-2px); /* 鼠标悬停上浮 */
-  box-shadow: 0 6px 12px rgba(255, 75, 75, 0.3);
-}
-/* 录音按钮激活状态：变红 */
-.is-recording-active {
-  color: #F56C6C !important;      /* 红色文字/图标 */
-  background-color: #fef0f0 !important; /* 浅红背景 */
-  border-color: #fab6b6 !important;     /* 红色边框 */
-}
-
-/* 麦克风图标呼吸动画 */
-.mic-pulse {
-  animation: pulse-animation 1.5s infinite ease-in-out;
-}
-
-@keyframes pulse-animation {
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.2); opacity: 0.6; }
-  100% { transform: scale(1); opacity: 1; }
-}
-/* --- 修复布局压缩 (必加) --- */
-.input-row {
-  width: 100%;
-  display: flex; /* 让子元素横向排列 */
-}
-
-/* 强制输入框占满剩余空间 */
-.full-width-input {
-  flex: 1; 
-  width: 100%;
-}
-
-/* 录音按钮激活态 */
-.recording-active {
-  color: #F56C6C !important;
-  background-color: #fef0f0 !important;
-  border-color: #fab6b6 !important;
-}
-
-/* 呼吸动画 */
-.mic-pulse {
-  animation: pulse 1.5s infinite ease-in-out;
-}
-@keyframes pulse {
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.2); opacity: 0.6; }
-  100% { transform: scale(1); opacity: 1; }
-}
-/* --- 修复布局压缩 --- */
-.input-row {
-  width: 100%;
-  display: flex; 
-}
-.full-width-input {
-  flex: 1; 
-  width: 100%;
-}
-
-/* --- 录音按钮特效 --- */
-.recording-active {
-  color: #F56C6C !important;
-  background-color: #fef0f0 !important;
-  border-color: #fab6b6 !important;
-}
-.mic-pulse {
-  animation: pulse 1.5s infinite ease-in-out;
-}
-
-/* --- 🚀 火箭按钮丝滑过渡 --- */
-.rocket-btn {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  font-weight: bold;
-}
-
-@keyframes pulse {
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.2); opacity: 0.6; }
-  100% { transform: scale(1); opacity: 1; }
-}
-/* 新增按钮的样式适配，保证间距美观 */
-.assessment-btn {
-  margin-right: 12px; /* 和生成按钮保持间距，与现有布局一致 */
-  transition: all 0.2s ease;
-}
-
-.assessment-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.15);
-}
-
-/* 保持原有样式不变 */
-/* ... 你的其他样式 ... */
+  </style>
