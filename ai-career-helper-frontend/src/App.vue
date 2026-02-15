@@ -1,8 +1,6 @@
 <script setup>
-// ==========================================
-// 1. 导入依赖 (Imports)
-// ==========================================
-import { ref, reactive, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
+// ===================================// 1. 导入依赖 (Imports)
+// ===================================import { ref, reactive, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 import axios from 'axios'
 import * as echarts from 'echarts'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -29,10 +27,8 @@ const md = new MarkdownIt()
 
 const router = useRouter()
 const route = useRoute()
-// ==========================================
-// 2. 核心变量定义 (State) - 放在最前防止报错
-// ==========================================
-// 合并冲突：保留使用可空合并运算符的 API_BASE 定义，兼容环境变量未配置的情况
+// ===================================// 2. 核心变量定义 (State) - 放在最前防止报错
+// ===================================// 合并冲突：保留使用可空合并运算符的 API_BASE 定义，兼容环境变量未配置的情况
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 // 报告生成降级开关（开发/测试环境可通过 .env 配置，例如：VITE_INTERVIEW_REPORT_NO_FALLBACK=true）
 const INTERVIEW_REPORT_NO_FALLBACK = import.meta.env.VITE_INTERVIEW_REPORT_NO_FALLBACK === 'true'
@@ -40,6 +36,18 @@ console.debug('[App] API_BASE ->', API_BASE)
 const currentUser = ref(null)
 const activeMenu = ref('0')
 
+
+// 手机端侧边栏开关控制
+const isSidebarOpen = ref(false)
+
+// 监听侧边栏状态，动态添加/移除 body 类名
+watch(isSidebarOpen, (newVal) => {
+  if (newVal) {
+    document.body.classList.add(\'sidebar-open\')
+  } else {
+    document.body.classList.remove(\'sidebar-open\')
+  }
+})
 // 如果路由携带 focus 参数（例如来自 /explore 的跳转），则将主界面聚焦到对应功能
 // 处理来自 /explore 的一次性聚焦参数（可在首次加载或运行时实时响应）
 const applyFocus = (f) => {
@@ -207,11 +215,8 @@ const jumpToAssessment = () => {
   // 替换为你的测评页面实际URL
   window.open('https://minke8.cn/gd7.html', '_blank')
 }
-// ==========================================
-// 3. 语音功能 (TTS & STT) - 核心新增
-// ==========================================
-
-// 3.1 获取最佳声音 (优先 Edge 晓晓)
+// ===================================// 3. 语音功能 (TTS & STT) - 核心新增
+// ===================================// 3.1 获取最佳声音 (优先 Edge 晓晓)
 const getBestVoice = () => {
   const voices = window.speechSynthesis.getVoices()
   return (
@@ -221,11 +226,8 @@ const getBestVoice = () => {
   )
 }
 
-// ============================================
-// 👇 语音合成：自然语音 + 文本预处理 (过滤表情/图片等噪音)
-// ============================================
-
-// 全局变量防止秒断
+// =====================================// 👇 语音合成：自然语音 + 文本预处理 (过滤表情/图片等噪音)
+// =====================================// 全局变量防止秒断
 let currentUtterance = null 
 
 // 语音播报前的文本清洗：去掉图片/表情等描述，仅保留纯文本内容
@@ -376,11 +378,8 @@ const toggleVoiceInput = () => {
   recognitionInstance.start()
 }
 
-// ==========================================
-// 4. 业务逻辑 (Business Logic)
-// ==========================================
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+// ===================================// 4. 业务逻辑 (Business Logic)
+// ===================================const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // 简历医生 URL：部署时通过 Vercel 环境变量 VITE_RESUME_DOCTOR_URL 设置
 const RESUME_DOCTOR_URL = import.meta.env.VITE_RESUME_DOCTOR_URL || 'https://ai-career-apper-resume-doctor-69etycfa4ohbkxndweoawk.streamlit.app'
 const goToResumeDoctor = () => window.open(RESUME_DOCTOR_URL, '_blank')
@@ -1350,8 +1349,7 @@ const sendMessage = async () => {
     let isGuide = false
     
     if (isGuidingPhase.value) {
-      // ========== 引导环节：仅用于收集年级 & 意向岗位等基础信息 ==========
-      if (useTemplateMode.value) {
+      // ========== 引导环节：仅用于收集年级 & 意向岗位等基础信息 ===      if (useTemplateMode.value) {
         // 用户主动选择模板模式
         const templateRes = getGuideTemplateResponse(userMsg)
         finalText = templateRes.reply
@@ -1396,8 +1394,7 @@ const sendMessage = async () => {
         interviewGuide.guideIndex = 0
       }
     } else {
-      // ========== 正式面试环节：问题池 + AI 优先，模板兜底 ==========
-      // 先从问题池中选择一个不重复、维度不同的问题，作为本轮核心问题
+      // ========== 正式面试环节：问题池 + AI 优先，模板兜底 ===      // 先从问题池中选择一个不重复、维度不同的问题，作为本轮核心问题
       const pickQuestionFromPool = () => {
         const usedIds = usedQuestionIds.value
         const usedDims = usedDimensions.value
@@ -1911,11 +1908,8 @@ const downloadInterviewReport = () => {
   ElMessage.success('报告下载成功')
 }
 
-// ==========================================
-// 5. 复杂模块逻辑 (简历/沙盘/规划)
-// ==========================================
-
-// --- 简历医生 ---
+// ===================================// 5. 复杂模块逻辑 (简历/沙盘/规划)
+// ===================================// --- 简历医生 ---
 const resumeRadarIndicator = computed(() => {
   const dims = resumeResult.value?.dimensions || []
   return dims.map((d) => ({ name: d.name, max: 100 }))
@@ -2276,10 +2270,8 @@ const downloadSandboxReport = () => {
   URL.revokeObjectURL(url)
 }
 
-// ==========================================
-// 6. 生命周期 & 辅助 (Lifecycle)
-// ==========================================
-const handleSelect = (key) => {
+// ===================================// 6. 生命周期 & 辅助 (Lifecycle)
+// ===================================const handleSelect = (key) => {
   activeMenu.value = key
   if (key === '3') nextTick(() => initSandboxChart())
   if (key === '1') nextTick(() => initResumeRadar())
@@ -2314,10 +2306,8 @@ onMounted(() => {
   fetchJobsData()
 })
 
-// ==========================================
-// 7. 生涯规划扩展：性格测试 & AI 整合报告
-// ==========================================
-const openPersonalityTest = () => {
+// ===================================// 7. 生涯规划扩展：性格测试 & AI 整合报告
+// ===================================const openPersonalityTest = () => {
   window.open('https://www.16personalities.com/ch/%E4%BA%BA%E6%A0%BC%E6%B5%8B%E8%AF%95', '_blank')
 }
 
@@ -2550,6 +2540,10 @@ onBeforeUnmount(() => {
   
       <el-container class="app-main">
         <el-header class="topbar">
+          <!-- 汉堡菜单按钮，用于手机端呼出侧边栏 -->
+          <button class="mobile-menu-toggle" @click="isSidebarOpen = !isSidebarOpen">
+            ☰
+          </button>
           <div class="topbar-left">
             <div class="topbar-title">
   {{
@@ -3718,8 +3712,7 @@ onBeforeUnmount(() => {
   
   .animate-fade { animation: fadeIn 0.5s ease; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-/* ==========================================
-   移动端自适应样式（vw/vh + flex 布局）
+/* ===================================   移动端自适应样式（vw/vh + flex 布局）
    ========================================== */
 @media (max-width: 768px) {
   /* 基础布局适配 */
@@ -3736,42 +3729,91 @@ onBeforeUnmount(() => {
     box-sizing: border-box;
   }
   
-<<<<<<< HEAD
-=======
-  /* 侧边栏适配 - 隐藏左侧导航栏 */
-  .app-aside {
-    display: none !important;
-    width: 0 !important;
-    min-width: 0 !important;
-  }
+  /* ====================================== */
+  /* 手机端布局：侧边栏滑入滑出效果 */
+  /* ====================================== */
   
-  /* 主内容区占满屏幕 */
-  .app-main {
-    width: 100% !important;
-    margin-left: 0 !important;
-    flex: 1 !important;
-    min-width: 0 !important;
+  /* 1. 默认隐藏侧边栏（滑出屏幕外） */
+  .app-aside,
+  :deep(.el-aside),
+  .side-menu {
+    position: fixed;
+    top: 0;
+    left: -100%; /* 默认滑出屏幕外 */
+    width: 75vw !important;
+    height: 100vh !important;
+    z-index: 9999;
+    transition: left 0.3s ease;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
   }
-  
-  /* Element Plus 容器适配 */
-  :deep(.el-container) {
-    flex-direction: column !important;
+
+  /* 2. 侧边栏打开时的状态 */
+  body.sidebar-open .app-aside,
+  body.sidebar-open :deep(.el-aside),
+  body.sidebar-open .side-menu {
+    left: 0; /* 滑入屏幕 */
   }
-  
-  :deep(.el-aside) {
-    display: none !important;
-    width: 0 !important;
-    min-width: 0 !important;
-  }
-  
+
+  /* 3. 主内容全屏 */
+  .app-main,
   :deep(.el-main) {
     width: 100% !important;
     margin-left: 0 !important;
-    padding: 2.67vw !important;
+    padding: 3vw !important;
+  }
+
+  /* 4. 容器不溢出 */
+  :deep(.el-container) {
+    flex-direction: column !important;
+    overflow-x: hidden !important;
+  }
+
+  /* 5. 顶部栏适配手机 */
+  .topbar {
+    width: 100% !important;
+    padding: 3vw 4vw !important;
+    min-height: 12vw !important;
+    display: flex;
+    align-items: center;
+    gap: 3vw;
+  }
+
+  /* 6. 汉堡按钮样式（只在手机上显示） */
+  .mobile-menu-toggle {
+    display: block !important;
+    font-size: 6vw;
+    background: none;
+    border: none;
+    color: #333;
+    cursor: pointer;
+    padding: 2vw;
+    line-height: 1;
+    flex-shrink: 0;
   }
   
->>>>>>> mobile-adaptive
-  /* 模拟面试聊天页面适配 */
+  .mobile-menu-toggle:hover {
+    opacity: 0.7;
+  }
+  
+  /* 7. 侧边栏打开时的遮罩层 */
+  body.sidebar-open::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9998;
+    animation: fadeIn 0.3s ease;
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+/* 模拟面试聊天页面适配 */
   .chat-shell {
     height: calc(100vh - 50vw);
     min-height: 50vh;
@@ -3857,12 +3899,10 @@ onBeforeUnmount(() => {
     flex-wrap: wrap;
   }
   
-<<<<<<< HEAD
   /* 侧边栏适配 */
   .side-menu {
     width: 100%;
     max-width: 100vw;
-=======
   /* 侧边栏菜单（如果单独存在） */
   .side-menu {
     display: none !important;
@@ -3876,7 +3916,6 @@ onBeforeUnmount(() => {
   /* 侧边栏底部用户信息 */
   .aside-footer {
     display: none !important;
->>>>>>> mobile-adaptive
   }
   
   .brand-title {
@@ -3892,7 +3931,6 @@ onBeforeUnmount(() => {
     padding: 2.67vw 4.8vw;
     height: auto;
     min-height: 12.8vw;
-<<<<<<< HEAD
   }
   
   .topbar-title {
@@ -3952,7 +3990,6 @@ onBeforeUnmount(() => {
   }
 }
 
-=======
     width: 100% !important;
   }
   
@@ -4013,5 +4050,11 @@ onBeforeUnmount(() => {
   }
 }
 
->>>>>>> mobile-adaptive
-  </style>
+  
+/* 电脑端隐藏汉堡按钮 */
+@media (min-width: 769px) {
+  .mobile-menu-toggle {
+    display: none !important;
+  }
+}
+</style>
