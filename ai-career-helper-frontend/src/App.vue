@@ -43,9 +43,9 @@ const isSidebarOpen = ref(false)
 // 监听侧边栏状态，动态添加/移除 body 类名
 watch(isSidebarOpen, (newVal) => {
   if (newVal) {
-    document.body.classList.add(\'sidebar-open\')
+    document.body.classList.add('sidebar-open')
   } else {
-    document.body.classList.remove(\'sidebar-open\')
+    document.body.classList.remove('sidebar-open')
   }
 })
 // 如果路由携带 focus 参数（例如来自 /explore 的跳转），则将主界面聚焦到对应功能
