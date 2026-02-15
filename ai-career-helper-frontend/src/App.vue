@@ -1210,12 +1210,12 @@ const sendMessage = async () => {
       
       // 提取岗位信息（前端、算法、后端、Java、Python、全栈等）
       const positionPatterns = [
-        { pattern: /(前端工程师|前端开发|前端)/, name: '前端' },
-        { pattern: /(算法工程师|算法|算法开发)/, name: '算法' },
-        { pattern: /(后端工程师|后端开发|后端)/, name: '后端' },
-        { pattern: /(全栈|全栈开发|全栈工程师)/, name: '全栈' },
-        { pattern: /(Java开发|Java工程师|Java)/, name: 'Java开发' },
-        { pattern: /(Python开发|Python工程师|Python)/, name: 'Python开发' }
+        { pattern: /(前端工程师|前端开发|前端)/, name: '前端工程师' },
+        { pattern: /(算法工程师|算法|算法开发)/, name: '算法工程师' },
+        { pattern: /(后端工程师|后端开发|后端)/, name: '后端工程师' },
+        { pattern: /(全栈|全栈开发|全栈工程师)/, name: '全栈工程师' },
+        { pattern: /(Java开发|Java工程师|Java)/, name: 'Java开发工程师' },
+        { pattern: /(Python开发|Python工程师|Python)/, name: 'Python开发工程师' }
       ]
       
       for (const { pattern, name } of positionPatterns) {
@@ -1223,7 +1223,7 @@ const sendMessage = async () => {
           extractedPosition = name
           // 更新 interviewGuide.targetRole
           if (!interviewGuide.targetRole) {
-            interviewGuide.targetRole = name + (name.includes('工程师') ? '' : '工程师')
+            interviewGuide.targetRole = name
             interviewGuide.templateRole = interviewGuide.targetRole
             interviewGuide.templateStage = interviewGuide.targetRole
           }
@@ -1237,13 +1237,36 @@ const sendMessage = async () => {
       
       if (extractedEducation && extractedPosition) {
         // 成功提取学历和岗位，使用模板生成问题
-        thirdQuestion = `了解了，${extractedEducation}就开始关注${extractedPosition}岗位，很有规划呀！那你目前在这个方向上有没有接触过一些基础的技术，或者做过什么小练习、小项目呢？`
+        // 根据岗位类型，添加更具体的技术提示
+        let techHint = ''
+        if (extractedPosition.includes('算法')) {
+          techHint = '（比如Python、C++）'
+        } else if (extractedPosition.includes('前端')) {
+          techHint = '（比如HTML、CSS、JavaScript）'
+        } else if (extractedPosition.includes('后端') || extractedPosition.includes('Java')) {
+          techHint = '（比如Java、Spring框架）'
+        } else if (extractedPosition.includes('Python')) {
+          techHint = '（比如Python、Django或Flask）'
+        }
+        
+        thirdQuestion = `了解了，${extractedEducation}就开始关注${extractedPosition}岗位，很有规划呀！那你目前在${extractedPosition.includes('算法') ? '算法' : '这个方向'}方面有没有接触过一些基础的${extractedPosition.includes('算法') ? '编程语言' : '技术'}${techHint}，或者做过什么小练习、小项目呢？`
       } else if (extractedEducation) {
         // 只提取到学历，使用部分模板
         thirdQuestion = `了解了，${extractedEducation}就开始关注这个岗位，很有规划呀！那你目前在这个方向上有没有接触过一些基础的技术，或者做过什么小练习、小项目呢？`
       } else if (extractedPosition) {
         // 只提取到岗位，使用部分模板
-        thirdQuestion = `了解了，你关注${extractedPosition}岗位，很有规划呀！那你目前在这个方向上有没有接触过一些基础的技术，或者做过什么小练习、小项目呢？`
+        let techHint = ''
+        if (extractedPosition.includes('算法')) {
+          techHint = '（比如Python、C++）'
+        } else if (extractedPosition.includes('前端')) {
+          techHint = '（比如HTML、CSS、JavaScript）'
+        } else if (extractedPosition.includes('后端') || extractedPosition.includes('Java')) {
+          techHint = '（比如Java、Spring框架）'
+        } else if (extractedPosition.includes('Python')) {
+          techHint = '（比如Python、Django或Flask）'
+        }
+        
+        thirdQuestion = `了解了，你关注${extractedPosition}岗位，很有规划呀！那你目前在${extractedPosition.includes('算法') ? '算法' : '这个方向'}方面有没有接触过一些基础的${extractedPosition.includes('算法') ? '编程语言' : '技术'}${techHint}，或者做过什么小练习、小项目呢？`
       } else {
         // 提取失败，使用兜底问题
         thirdQuestion = '了解了，那你目前在这个方向上有没有接触过一些基础的技术，或者做过什么小练习、小项目呢？'
