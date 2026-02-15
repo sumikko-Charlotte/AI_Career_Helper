@@ -3724,6 +3724,38 @@ onBeforeUnmount(() => {
     box-sizing: border-box;
   }
   
+  /* 侧边栏适配 - 隐藏左侧导航栏 */
+  .app-aside {
+    display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+  }
+  
+  /* 主内容区占满屏幕 */
+  .app-main {
+    width: 100% !important;
+    margin-left: 0 !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+  }
+  
+  /* Element Plus 容器适配 */
+  :deep(.el-container) {
+    flex-direction: column !important;
+  }
+  
+  :deep(.el-aside) {
+    display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+  }
+  
+  :deep(.el-main) {
+    width: 100% !important;
+    margin-left: 0 !important;
+    padding: 2.67vw !important;
+  }
+  
   /* 模拟面试聊天页面适配 */
   .chat-shell {
     height: calc(100vh - 50vw);
@@ -3810,10 +3842,19 @@ onBeforeUnmount(() => {
     flex-wrap: wrap;
   }
   
-  /* 侧边栏适配 */
+  /* 侧边栏菜单（如果单独存在） */
   .side-menu {
-    width: 100%;
-    max-width: 100vw;
+    display: none !important;
+  }
+  
+  /* 品牌区域（侧边栏顶部） */
+  .brand {
+    display: none !important;
+  }
+  
+  /* 侧边栏底部用户信息 */
+  .aside-footer {
+    display: none !important;
   }
   
   .brand-title {
