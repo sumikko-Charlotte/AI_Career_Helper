@@ -1,8 +1,9 @@
 <script setup>
-import { ref, onMounted } from 'vue' // Removed computed as we will bind directly
+import { ref, onMounted, computed } from 'vue' // Removed computed as we will bind directly
 import request, { API_BASE } from '@/utils/request.js'
 import axios from 'axios' // 保留用于 SERVER_API 请求
 import { useRouter, useRoute } from 'vue-router'
+import { QrcodeVue } from 'qrcode.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -29,14 +30,112 @@ const registerForm = ref({
   target_role: ''
 })
 
-// 页面加载时检查是否有“记住我”的历史
+// 一键登录链接和二维码相关
+const testUsername = 'alice'
+const testPassword = 'alice456'
+const loginLink = computed(() => {
+  const baseUrl = window.location.origin
+  // 使用 auto_login 参数，而不是直接传密码
+  return `${baseUrl}/login?auto_login=${testUsername}`
+})
+const qrcodeValue = computed(() => {
+  // 二维码内容：线上使用 https://www.aicareerhelper.xyz，本地使用当前 origin
+  const isProduction = window.location.hostname.includes('aicareerhelper.xyz')
+  const baseUrl = isProduction ? 'https://www.aicareerhelper.xyz' : window.location.origin
+  return `${baseUrl}/login?auto_login=${testUsername}`
+})
+
+// 页面加载时检查是否有"记住我"的历史，以及 URL 参数自动登录
 onMounted(() => {
   const savedUser = localStorage.getItem('remembered_username')
   if (savedUser) {
     loginForm.value.username = savedUser
     rememberMe.value = true
   }
+  
+  // 检查 URL 参数 auto_login，如果存在则自动登录（全自动，无需手动操作）
+  const autoLoginUser = route.query.auto_login
+  if (autoLoginUser === 'alice') {
+    // 直接调用登录接口，无需填充表单
+    // 延迟一下确保组件完全加载
+    setTimeout(() => {
+      handleAutoLogin()
+    }, 100)
+  }
 })
+
+// 全自动登录：直接调用登录接口，无需手动操作
+const handleAutoLogin = async () => {
+  loading.value = true
+  try {
+    console.log('🚀 [Auto Login] 自动登录 alice 账号')
+    const response = await request.post('/api/login', {
+      username: testUsername,
+      password: testPassword
+    })
+
+    console.log('✅ [Auto Login] Response:', response.data)
+    
+    if (response.data.success) {
+      const user = response.data.user
+      console.log('👤 [Auto Login] User info:', user)
+
+      // 保存用户信息
+      if (user) {
+        const userInfo = {
+          id: user.id || '',
+          username: user.username || testUsername,
+          email: user.email || '',
+          phone: user.phone || '',
+          city: user.city || '',
+          avatar: user.avatar || '',
+          grade: user.grade || '',
+          target_role: user.target_role || ''
+        }
+        localStorage.setItem('login_user', JSON.stringify(userInfo))
+        sessionStorage.setItem('login_user', JSON.stringify(userInfo))
+        console.log('✅ [Auto Login] 用户信息已保存:', userInfo)
+      }
+
+      // 同步到真实用户服务
+      try {
+        const syncResp = await axios.post(`${SERVER_API}/api/login`, {
+          username: testUsername,
+          password: testPassword
+        })
+        if (!(syncResp.data && syncResp.data.code === 200)) {
+          await axios.post(`${SERVER_API}/api/register`, {
+            username: testUsername,
+            password: testPassword
+          })
+        }
+      } catch (e) { console.warn('同步登录到用户服务失败', e) }
+
+      // 登录成功后，跳转到首页（/app），可以访问所有功能
+      if (user.grade === '管理员' || user.username === 'admin') {
+        console.log('👑 [Auto Login] 检测到管理员身份，跳转后台')
+        await router.push('/admin/guide')
+      } else {
+        console.log('✅ [Auto Login] 登录成功，跳转到首页')
+        emit('login-success', user)
+        await router.push('/app')
+      }
+    } else {
+      console.error('❌ [Auto Login] 登录失败:', response.data.message)
+      alert('自动登录失败：' + response.data.message)
+    }
+  } catch (error) {
+    console.error('❌ [Auto Login] 登录错误:', error)
+    alert('自动登录请求失败，请检查后端服务')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 一键登录链接点击处理（直接调用自动登录）
+const handleLoginAndRedirect = async () => {
+  await handleAutoLogin()
+}
 
 const gradeOptions = [
   '大一', '大二', '大三', '大四', 
@@ -162,9 +261,9 @@ const handleLogin = async () => {
           console.log('👑 检测到管理员身份，跳转后台功能引导页')
           await router.push('/admin/guide')
       } else {
-          // 普通用户：登录成功后自动跳转到过渡导航页（第3页）
+          // 普通用户：登录成功后跳转到首页（/app），可以访问所有功能
           emit('login-success', user)
-          await router.push('/explore')
+          await router.push('/app')
       }
 
     } else {
@@ -342,6 +441,29 @@ const handleSubmit = () => {
             {{ isLogin ? '立即注册' : '立即登录' }}
           </button>
         </span>
+      </div>
+
+      <!-- 一键登录链接和二维码区域（仅登录模式显示） -->
+      <div v-if="isLogin" class="quick-login-section">
+        <div class="quick-login-divider">
+          <span>或</span>
+        </div>
+        
+        <!-- 一键登录链接 -->
+        <div class="quick-login-link-container">
+          <a :href="loginLink" class="quick-login-link" @click.prevent="handleLoginAndRedirect">
+            🔗 一键登录（测试账号）
+          </a>
+          <p class="quick-login-hint">点击链接自动登录（无需输入账号密码）</p>
+        </div>
+
+        <!-- 二维码登录 -->
+        <div class="qrcode-container">
+          <div class="qrcode-wrapper">
+            <QrcodeVue :value="qrcodeValue" :size="200" level="M" />
+          </div>
+          <p class="qrcode-hint">扫码自动登录（测试账号 alice）</p>
+        </div>
       </div>
     </div>
   </div>
@@ -599,6 +721,108 @@ const handleSubmit = () => {
 
 .toggle-link:hover {
   color: #a78bfa;
+}
+
+/* ==========================================
+   一键登录链接和二维码样式
+   ========================================== */
+.quick-login-section {
+  margin-top: 32px;
+  padding-top: 32px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.quick-login-divider {
+  position: relative;
+  width: 100%;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+}
+
+.quick-login-divider::before,
+.quick-login-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: calc(50% - 30px);
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.quick-login-divider::before {
+  left: 0;
+}
+
+.quick-login-divider::after {
+  right: 0;
+}
+
+.quick-login-link-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.quick-login-link {
+  color: #60a5fa;
+  font-size: 16px;
+  font-weight: 500;
+  text-decoration: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  transition: all 0.3s ease;
+  cursor: pointer;
+  display: inline-block;
+}
+
+.quick-login-link:hover {
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.15);
+  border-color: rgba(167, 139, 250, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(96, 165, 250, 0.3);
+}
+
+.quick-login-hint {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  margin: 0;
+  text-align: center;
+}
+
+.qrcode-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.qrcode-wrapper {
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qrcode-hint {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0;
+  text-align: center;
 }
 
 /* ==========================================
