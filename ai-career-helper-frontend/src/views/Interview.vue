@@ -31,8 +31,10 @@
   height: 100%;
 }
 
+/* 【修改行34-42】电脑端强制左右布局（row方向） */
 .interview-layout-container {
-  display: flex;
+  display: flex !important;
+  flex-direction: row !important; /* 强制左右布局 */
   gap: 20px;
   height: calc(100vh - 420px);
   min-height: 600px;
@@ -41,10 +43,10 @@
   box-sizing: border-box;
 }
 
-/* 左侧：数字人展示区（40%宽度，居中放大显示） */
+/* 【修改行44-60】左侧数字人区域：电脑端占40%宽度，居中放大显示 */
 .digital-human-section {
-  flex: 0 0 40%;
-  display: flex;
+  flex: 0 0 40% !important; /* 电脑端强制40%宽度 */
+  display: flex !important;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -92,10 +94,10 @@
   margin: 0 auto;
 }
 
-/* 右侧：聊天区域（60%宽度，支持滚动） */
+/* 【修改行95-106】右侧聊天区域：电脑端占60%宽度，支持垂直滚动 */
 .chat-shell {
-  flex: 0 0 60%;
-  display: flex;
+  flex: 0 0 60% !important; /* 电脑端强制60%宽度 */
+  display: flex !important;
   flex-direction: column;
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(15, 23, 42, 0.06);
@@ -137,65 +139,76 @@
   background: rgba(15, 23, 42, 0.3);
 }
 
-/* 响应式设计：移动端自动切换为上下布局 */
-@media (max-width: 768px) {
+/* 【修改行140-166】手机端（<768px）：强制上下布局，数字人30%高度，聊天70%高度 */
+@media (max-width: 767px) {
   .interview-layout-container {
-    flex-direction: column;
-    height: auto;
-    min-height: auto;
+    flex-direction: column !important; /* 强制上下布局 */
+    height: 100vh !important;
+    min-height: 100vh !important;
     gap: 16px;
     padding: 0;
+    box-sizing: border-box;
   }
 
   .digital-human-section {
-    flex: 0 0 auto;
-    height: 320px;
-    width: 100%;
-    min-height: 320px;
+    flex: 0 0 30% !important; /* 手机端占30%高度 */
+    width: 100% !important;
+    height: 30vh !important;
+    min-height: 30vh !important;
+    max-height: 30vh !important;
     padding: 20px 16px;
-    order: 1; /* 确保数字人在上方 */
+    order: 1 !important; /* 确保数字人在上方 */
   }
 
   .chat-shell {
-    flex: 0 0 auto;
-    height: calc(100vh - 520px);
-    min-height: 400px;
-    width: 100%;
-    order: 2; /* 确保聊天框在下方 */
+    flex: 0 0 70% !important; /* 手机端占70%高度 */
+    width: 100% !important;
+    height: 70vh !important;
+    min-height: 70vh !important;
+    max-height: 70vh !important;
+    order: 2 !important; /* 确保聊天框在下方 */
   }
 }
 
-/* 进一步优化移动端显示（小屏手机） */
+/* 【修改行168-200】小屏手机优化：保持30%和70%高度分配 */
 @media (max-width: 480px) {
   .interview-layout-container {
     gap: 12px;
   }
 
   .digital-human-section {
-    height: 280px;
-    min-height: 280px;
+    flex: 0 0 30% !important;
+    height: 30vh !important;
+    min-height: 30vh !important;
+    max-height: 30vh !important;
     padding: 16px 12px;
     border-radius: 16px;
   }
 
   .chat-shell {
-    height: calc(100vh - 480px);
-    min-height: 350px;
+    flex: 0 0 70% !important;
+    height: 70vh !important;
+    min-height: 70vh !important;
+    max-height: 70vh !important;
     border-radius: 16px;
   }
 }
 
-/* 超小屏优化 */
+/* 【修改行188-200】超小屏优化：保持30%和70%高度分配 */
 @media (max-width: 360px) {
   .digital-human-section {
-    height: 240px;
-    min-height: 240px;
+    flex: 0 0 30% !important;
+    height: 30vh !important;
+    min-height: 30vh !important;
+    max-height: 30vh !important;
     padding: 12px 10px;
   }
 
   .chat-shell {
-    height: calc(100vh - 440px);
-    min-height: 300px;
+    flex: 0 0 70% !important;
+    height: 70vh !important;
+    min-height: 70vh !important;
+    max-height: 70vh !important;
   }
 }
 </style>
