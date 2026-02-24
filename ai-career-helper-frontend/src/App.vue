@@ -24,7 +24,6 @@ import HistoryRecord from './components/HistoryRecord.vue'
 import ResumeTemplates from './components/ResumeTemplates.vue'
 import VirtualExperiment from './components/VirtualExperiment.vue'
 import CareerExperience from './components/CareerExperience.vue'
-import ExploreGuide from './views/ExploreGuide.vue'
 const md = new MarkdownIt()
 
 const router = useRouter()
@@ -186,20 +185,8 @@ const roleOptions = [
   { label: '汽车', options: ['新能源汽车', '汽车智能网联', '汽车经销商', '汽车后市场', '汽车研发', '制造汽车零件', '摩托车/自行车之制造', '4S店'] },
   { label: '能源/化工/环保', options: ['光伏', '储能', '电池', '风电', '新能源环保', '电力', '热力', '水利', '石油', '石化', '矿产', '地质采掘', '冶炼'] },
   { label: '政府/非盈利机构/其他', options: ['公共事业', '农业', '林业', '牧业', '渔业', '政府'] },
-  // 新增的综合方向标签（用于提示，实际仍然允许自由输入）
-  { label: '综合方向', options: [
-    '教育/培训/科研',
-    '法律/法务/合规',
-    '财务/会计/审计',
-    '人力资源/行政/办公',
-    '市场营销/品牌/公关',
-    '媒体/传媒/影视',
-    '医疗/健康/护理',
-    '金融/银行/证券/保险',
-    '公共管理/公务员/事业单位',
-    '设计/创意/艺术',
-    '心理学/咨询/社工'
-  ] }
+  { label: '其他', options: ['其他'] },
+  { label: '系统管理', options: ['系统管理'] }
 ]
 
 // 新增：职业测评跳转方法（适配script setup）
@@ -381,9 +368,7 @@ const toggleVoiceInput = () => {
 // ==========================================
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-// 简历医生 URL：部署时通过 Vercel 环境变量 VITE_RESUME_DOCTOR_URL 设置
-const RESUME_DOCTOR_URL = import.meta.env.VITE_RESUME_DOCTOR_URL || 'https://ai-career-apper-resume-doctor-69etycfa4ohbkxndweoawk.streamlit.app'
-const goToResumeDoctor = () => window.open(RESUME_DOCTOR_URL, '_blank')
+const goToResumeDoctor = () => window.open('https://ai-career-apper-resume-doctor-69etycfa4ohbkxndweoawk.streamlit.app', '_blank')
 
 const scrollChatToBottom = () => {
   const el = document.querySelector('.chat-window')
@@ -1963,108 +1948,114 @@ const scheduleSandboxUpdate = () => {
 }
 watch(radarValues, () => { scheduleSandboxUpdate() })
 
-// 竞争力沙盘：辅助函数（本地量化/限制分值）
+// 竞争力沙盘：AI 自动量化（允许自然语言自由输入；不做格式校验）
 const _clamp100 = (n) => Math.max(0, Math.min(100, n))
-
-// 本地量化规则（AI 降级或兜底使用）
-const quantizeSandboxLocally = () => {
-  const rawGpa = parseFloat(sandboxForm.gpa) || 0
-  const projectCount = parseInt(String(sandboxForm.project || '').match(/\d+/)?.[0] || '0')
-  const internCount = parseInt(String(sandboxForm.intern || '').match(/\d+/)?.[0] || '0')
-  const competition = String(sandboxForm.competition || '')
-  const englishScore = parseInt(String(sandboxForm.english || '').trim()) || 0
-  const leaderScore = parseInt(String(sandboxForm.leader || '').trim()) || 0
-
-  const gpaScore =
-    rawGpa > 0 && rawGpa <= 4
-      ? _clamp100(Math.round((rawGpa / 4) * 100))
-      : _clamp100(rawGpa)
-  const projectScore = _clamp100(Math.min(projectCount * 10, 100))
-  const internScore = _clamp100(Math.min(internCount * 30, 90))
-  const competitionScore = !competition
-    ? 0
-    : competition.includes('国')
-      ? 100
-      : competition.includes('省')
-        ? 80
-        : 60
-  const finalEnglishScore = _clamp100(englishScore)
-  const finalLeaderScore = _clamp100(leaderScore)
-
-  radarValues.gpa = gpaScore
-  radarValues.project = projectScore
-  radarValues.intern = internScore
-  radarValues.competition = competitionScore
-  radarValues.english = finalEnglishScore
-  radarValues.leader = finalLeaderScore
+const _toFiniteNumber = (v, fallback) => {
+  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').trim())
+  return Number.isFinite(n) ? n : fallback
+}
+const _extractJsonObject = (text) => {
+  if (!text) return null
+  const s = String(text)
+  // 先取 ```json ... ``` 包裹内容
+  const fenced = s.match(/```json\s*([\s\S]*?)\s*```/i)
+  if (fenced && fenced[1]) {
+    try { return JSON.parse(fenced[1]) } catch (_) {}
+  }
+  // 再尝试抓取第一个 JSON 对象
+  const obj = s.match(/\{[\s\S]*\}/)
+  if (obj && obj[0]) {
+    try { return JSON.parse(obj[0]) } catch (_) {}
+  }
+  return null
 }
 
-// 点击「生成雷达图」：优先调用后端 AI 进行自然语言量化，失败时降级为本地规则
-const generateSandboxRadar = async () => {
-  const hasInput = sandboxForm.gpa || sandboxForm.project || sandboxForm.intern ||
-                   sandboxForm.competition || sandboxForm.english || sandboxForm.leader
-  if (!hasInput) {
-    return ElMessage.warning('请先填写左侧 6 项参数（支持自然语言描述）')
+/**
+ * 调用项目现有 AI 接口（沿用 axios + API_BASE）对自然语言进行量化。
+ * 约束：不改后端/不引入新依赖，因此复用后端已存在的 `/api/analyze-experiment`（返回 markdown）。
+ * 做法：让 AI 在 markdown 文本中包含一个可解析的 JSON 对象，我们从返回文本中提取并更新雷达图。
+ */
+const aiQuantizeSandboxInputs = async () => {
+  const nl = {
+    gpa: sandboxForm.gpa,
+    project: sandboxForm.project,
+    intern: sandboxForm.intern,
+    competition: sandboxForm.competition,
+    english: sandboxForm.english,
+    leader: sandboxForm.leader,
   }
 
-  // 拼接自然语言总述，交给后端 AI 分析
-  const nlText = [
-    sandboxForm.gpa && `GPA/成绩：${sandboxForm.gpa}`,
-    sandboxForm.project && `项目实战经验：${sandboxForm.project}`,
-    sandboxForm.intern && `名企实习经历：${sandboxForm.intern}`,
-    sandboxForm.competition && `竞赛获奖情况：${sandboxForm.competition}`,
-    sandboxForm.english && `英语学术能力：${sandboxForm.english}`,
-    sandboxForm.leader && `领导力与协作：${sandboxForm.leader}`
-  ].filter(Boolean).join('；')
+  const instruction = `
+你现在的任务是：把“个人竞争力沙盘”的 6 项自然语言描述量化到 0-100 分，并返回 JSON。
 
-  try {
-    const baseUrl = API_BASE || 'https://ai-career-helper-backend-u1s0.onrender.com'
-    const res = await axios.post(`${baseUrl}/api/analyze_natural_language`, {
-      text: nlText
-    }, {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: 30000
-    })
+【输出要求：必须包含且仅包含一个 JSON 对象（可以放在 Markdown 中，但 JSON 必须完整可解析）】
+{
+  "scores": {
+    "gpa": 0-100,
+    "project": 0-100,
+    "intern": 0-100,
+    "competition": 0-100,
+    "english": 0-100,
+    "leader": 0-100
+  },
+  "reasoning": "用 3-6 句话解释量化依据（可选）"
+}
 
-    const data = res?.data || {}
-    const scores = data.scores || {}
+【量化规则提示】
+- 允许缺失：若用户写“无/没有/暂未”，给 10-30 的合理分
+- 若描述很强（名企实习、国奖、顶会论文等），给 80-100
+- 若描述一般（校级奖/普通项目），给 50-75
+- GPA：3.8/4.0 大约 90-98；3.0/4.0 大约 70-80；2.5/4.0 大约 55-70
+`
 
-    if (data.success && scores) {
-      radarValues.gpa = _clamp100(scores.gpa ?? radarValues.gpa)
-      radarValues.project = _clamp100(scores.project ?? radarValues.project)
-      radarValues.intern = _clamp100(scores.intern ?? radarValues.intern)
-      radarValues.competition = _clamp100(scores.competition ?? radarValues.competition)
-      radarValues.english = _clamp100(scores.english ?? radarValues.english)
-      radarValues.leader = _clamp100(scores.leader ?? radarValues.leader)
-
-      ElMessage.success(`雷达图已根据 AI 识别结果更新${data.fallback ? '（降级模式）' : ''}`)
-      return
+  // 复用现有 AI 调用方式：走后端 analyze-experiment（返回 markdown 文本）
+  const res = await axios.post(`${API_BASE}/api/analyze-experiment`, {
+    career: '个人竞争力沙盘量化',
+    answers: {
+      instruction,
+      inputs: nl
     }
+  })
 
-    // AI 返回结构异常时，走本地量化
-    console.warn('[generateSandboxRadar] AI 返回结构异常，使用本地量化规则')
-    quantizeSandboxLocally()
-    ElMessage.warning('AI 量化结果异常，已使用本地规则估算')
+  const markdown = res?.data?.markdown || ''
+  const parsed = _extractJsonObject(markdown)
+  const scores = parsed?.scores || {}
+
+  // 即使 AI 未返回可解析 JSON，也要保证功能可用：做温和兜底（保持原值，不弹“格式不正确”）
+  const next = {
+    gpa: _clamp100(_toFiniteNumber(scores.gpa, radarValues.gpa)),
+    project: _clamp100(_toFiniteNumber(scores.project, radarValues.project)),
+    intern: _clamp100(_toFiniteNumber(scores.intern, radarValues.intern)),
+    competition: _clamp100(_toFiniteNumber(scores.competition, radarValues.competition)),
+    english: _clamp100(_toFiniteNumber(scores.english, radarValues.english)),
+    leader: _clamp100(_toFiniteNumber(scores.leader, radarValues.leader)),
+  }
+
+  return { markdown, next }
+}
+
+// 点击「生成雷达图」：调用 AI 自动量化 -> 写回 radarValues -> 触发原有 watch/raf 渲染（雷达图视觉不变）
+const generateSandboxRadar = async () => {
+  try {
+    const { next } = await aiQuantizeSandboxInputs()
+    radarValues.gpa = next.gpa
+    radarValues.project = next.project
+    radarValues.intern = next.intern
+    radarValues.competition = next.competition
+    radarValues.english = next.english
+    radarValues.leader = next.leader
+    ElMessage.success('雷达图已更新')
   } catch (e) {
-    console.error('❌ [generateSandboxRadar] /api/analyze_natural_language 调用失败:', e)
-    // 网络/后端失败时，使用本地量化规则兜底
-    quantizeSandboxLocally()
-    ElMessage.warning('AI 量化失败，已使用本地规则估算')
+    console.error(e)
+    // 不再提示“格式不正确”，仅提示服务不可用；并保持旧雷达值不变
+    ElMessage.error('量化失败：请确认后端服务与 AI 接口可用')
   }
 }
 
-// 点击「生成AI分析报告」：调用后端 /api/analyze-experiment 接口，基于量化后的 radarValues 生成 Markdown 报告
+// 点击「生成AI分析报告」：复用项目现有 API_BASE + axios 调用方式，调用后端已有的 /api/analyze-experiment（返回 Markdown）
 const generateSandboxAiReport = async () => {
-  // 输入验证：至少填写一个维度
-  const hasInput = sandboxForm.gpa || sandboxForm.project || sandboxForm.intern || 
-                   sandboxForm.competition || sandboxForm.english || sandboxForm.leader
-  if (!hasInput) {
-    return ElMessage.warning('请填写至少一个维度的参数')
-  }
-
   sandboxReportLoading.value = true
   sandboxReportMarkdown.value = ''
-  
   try {
     const payload = {
       // 原始输入（便于 AI 理解）
@@ -2085,75 +2076,17 @@ const generateSandboxAiReport = async () => {
       }
     }
 
-    // 使用 POST 调用后端 /api/analyze-experiment 接口，确保不会走到前端域导致 405
-    const baseUrl = API_BASE || 'https://ai-career-helper-backend-u1s0.onrender.com'
-    const res = await axios.post(`${baseUrl}/api/analyze-experiment`, {
+    const res = await axios.post(`${API_BASE}/api/analyze-experiment`, {
       answers: payload,
       career: '个人竞争力沙盘分析'
     })
 
-    if (res.data && res.data.success) {
-      // 后端可能返回 markdown 或 analysis_report，优先使用 analysis_report
-      const reportContent = res.data.analysis_report || res.data.markdown
-      const { quantized_scores, fallback } = res.data
-
-      // 更新雷达图数据（如果后端返回了量化分数）
-      if (quantized_scores) {
-        radarValues.gpa = _clamp100(quantized_scores.gpa || 0)
-        radarValues.project = _clamp100(quantized_scores.project_experience || quantized_scores.project || 0)
-        radarValues.intern = _clamp100(quantized_scores.internship || quantized_scores.intern || 0)
-        radarValues.competition = _clamp100(quantized_scores.competition || 0)
-        radarValues.english = _clamp100(quantized_scores.english_academic || quantized_scores.english || 0)
-        radarValues.leader = _clamp100(quantized_scores.leadership || quantized_scores.leader || 0)
-      }
-
-      // 更新AI分析报告
-      if (reportContent) {
-        sandboxReportMarkdown.value = reportContent
-        if (fallback) {
-          ElMessage.warning('AI分析失败，使用默认报告')
-        } else {
-          ElMessage.success('AI 分析报告已生成')
-        }
-      } else {
-        sandboxReportMarkdown.value = ''
-        ElMessage.warning('AI 未返回报告内容，请稍后重试')
-      }
-    } else {
-      throw new Error(res.data?.error || '接口返回格式错误')
-    }
+    sandboxReportMarkdown.value = res?.data?.markdown || ''
+    if (!sandboxReportMarkdown.value) ElMessage.warning('AI 未返回报告内容，请稍后重试')
+    else ElMessage.success('AI 分析报告已生成')
   } catch (e) {
-    console.error('❌ [generateSandboxAiReport] 接口调用失败:', e)
-    
-    // 错误处理：使用默认报告
-    sandboxReportMarkdown.value = (
-      '## 📊 竞争力总览\n\n' +
-      '基于您提供的 6 个维度数据，系统已进行初步分析。\n\n' +
-      '## 📈 各维度分数\n\n' +
-      `- GPA 学术成绩：${radarValues.gpa}/100\n` +
-      `- 项目实战经验：${radarValues.project}/100\n` +
-      `- 名企实习经历：${radarValues.intern}/100\n` +
-      `- 竞赛获奖情况：${radarValues.competition}/100\n` +
-      `- 英语学术能力：${radarValues.english}/100\n` +
-      `- 领导力与协作：${radarValues.leader}/100\n\n` +
-      '## 💡 建议\n\n' +
-      '建议重点关注分数较低的维度，制定针对性的提升计划。'
-    )
-
-    let errorMsg = 'AI分析失败，使用默认报告'
-    if (e.response) {
-      if (e.response.status === 400) {
-        errorMsg = e.response.data?.error || '请求参数错误，请检查输入'
-      } else if (e.response.status >= 500) {
-        errorMsg = '后端服务器错误，请稍后重试'
-      }
-    } else if (e.request) {
-      errorMsg = '网络请求失败，请检查网络连接或后端服务是否正常运行'
-    } else {
-      errorMsg = e.message || 'AI分析失败，使用默认报告'
-    }
-    
-    ElMessage.error(errorMsg)
+    console.error(e)
+    ElMessage.error('生成失败：请确认后端服务已启动且 AI 接口可用')
   } finally {
     sandboxReportLoading.value = false
   }
@@ -2368,11 +2301,6 @@ onBeforeUnmount(() => {
   active-text-color="#ffffff"
   @select="handleSelect"
 >
-  <el-menu-item index="explore">
-    <el-icon><Compass /></el-icon>
-    <span>功能导航</span>
-  </el-menu-item>
-  
   <el-menu-item index="0">
     <el-icon><Calendar /></el-icon>
     <span>生涯路径规划</span>
@@ -2447,7 +2375,6 @@ onBeforeUnmount(() => {
           <div class="topbar-left">
             <div class="topbar-title">
   {{
-    activeMenu === 'explore' ? '功能导航 · 新手指引' :
     activeMenu === '0' ? '生涯路径规划' :
     activeMenu === '1' ? 'AI 简历医生' :
     activeMenu === '2' ? '模拟面试' :
@@ -2470,11 +2397,6 @@ onBeforeUnmount(() => {
         </el-header>
   
         <el-main class="page">
-          <!-- 功能导航 · 新手指引（在主区域右侧显示过渡页） -->
-          <div v-if="activeMenu === 'explore'" class="animate-fade">
-            <ExploreGuide />
-          </div>
-
           <!-- 功能 0：生涯路径规划 -->
           <div v-if="activeMenu === '0'" class="animate-fade">
   <div class="page-header">
@@ -2510,7 +2432,6 @@ onBeforeUnmount(() => {
       <el-option v-for="g in gradeOptions" :key="g" :label="g" :value="g"/>
     </el-select>
 
-    <!-- 组合框：既可输入任意方向，也可从下拉选中 -->
     <el-select 
       v-model="roadmapRole" 
       placeholder="目标方向（可输入或选择）" 
@@ -2714,12 +2635,18 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <!-- 数字人展示区 -->
-            <div class="digital-human-section">
-              <DigitalHuman :isTalking="interviewerState === 'talking'" :gender="interviewerGender" />
-            </div>
+            <!-- 面试官和聊天区域的左右布局容器（强制左右分栏） -->
+            <div
+              class="interview-layout-container"
+              style="display: flex; flex-direction: row; width: 100%;"
+            >
+              <!-- 左侧：数字人展示区（约 40% 宽度，放大显示） -->
+              <div class="digital-human-section" style="flex: 0 0 40%; max-width: 40%;">
+                <DigitalHuman :isTalking="interviewerState === 'talking'" :gender="interviewerGender" />
+              </div>
 
-            <div class="chat-shell">
+              <!-- 右侧：聊天区域（约 60% 宽度，可滚动） -->
+              <div class="chat-shell" style="flex: 1; max-width: 60%;">
               <div class="chat-window chat-window-el">
                 <div v-for="(msg, i) in chatHistory" :key="i" class="msg-row" :class="msg.role">
                   <div class="avatar" v-if="msg.role === 'ai'">
@@ -2909,6 +2836,7 @@ onBeforeUnmount(() => {
                   <div class="report-content" v-html="md.render(interviewReportMarkdown)"></div>
                 </div>
               </div>
+              </div>
             </div>
           </div>
   
@@ -2968,7 +2896,7 @@ onBeforeUnmount(() => {
                   <!-- AI 分析（按钮样式与左侧一致，布局紧贴雷达图下方） -->
                   <div class="card-actions" style="justify-content: flex-start; gap: 10px;">
                     <el-button type="primary" :loading="sandboxReportLoading" @click="generateSandboxAiReport">
-                      {{ sandboxReportLoading ? 'AI分析中...' : '生成AI分析报告' }}
+                      {{ sandboxReportLoading ? '生成中...' : '生成AI分析报告' }}
                     </el-button>
                   </div>
 
@@ -3175,26 +3103,72 @@ onBeforeUnmount(() => {
   .chart-title { font-size: 12px; color: rgba(15,23,42,0.55); margin-bottom: 8px; }
   .chart-container { height: 520px; }
   
-  .digital-human-section {
-    height: 200px;
-    border-radius: 16px;
-    background: rgba(0,0,0,0.85);
-    border: 1px solid rgba(15,23,42,0.10);
-    margin-bottom: 12px;
-    box-shadow: 0 18px 50px rgba(15,23,42,0.08);
-    overflow: hidden;
+  /* 面试布局容器：电脑端左右布局，手机端上下布局 */
+  .interview-layout-container {
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+    height: calc(100vh - 420px);
+    min-height: 600px;
+    width: 100%;
+    box-sizing: border-box;
   }
   
+  /* 左侧：数字人展示区（40%宽度，放大显示） */
+  .digital-human-section {
+    flex: 0 0 40%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 20px;
+    background: rgba(0,0,0,0.85);
+    border: 1px solid rgba(15,23,42,0.10);
+    box-shadow: 0 20px 60px rgba(15,23,42,0.12);
+    overflow: hidden;
+    min-height: 0;
+    padding: 24px 16px;
+    box-sizing: border-box;
+  }
+  
+  .digital-human-section :deep(.digital-human-container) {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+  }
+  
+  .digital-human-section :deep(.video-wrapper) {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .digital-human-section :deep(.digital-video) {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+  }
+  
+  /* 右侧：聊天区域（60%宽度，可滚动） */
   .chat-shell {
-    height: calc(100vh - 420px);
+    flex: 0 0 60%;
     display: flex;
     flex-direction: column;
     background: rgba(255,255,255,0.92);
     border: 1px solid rgba(15,23,42,0.06);
-    border-radius: 16px;
-    box-shadow: 0 18px 50px rgba(15,23,42,0.08);
-    overflow-y: auto;   /* 允许整体区域滚动，报告较长时不被裁剪 */
-    overflow-x: hidden;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(15,23,42,0.12);
+    overflow: hidden;
+    min-height: 0;
   }
   .chat-window-el {
     flex: 1;
@@ -3204,6 +3178,8 @@ onBeforeUnmount(() => {
       radial-gradient(900px 400px at 20% 0%, rgba(64,158,255,0.10), transparent 60%),
       linear-gradient(180deg, #f7faff 0%, #f3f6fc 100%);
   }
+  
+  /* （按你最新要求）暂时取消移动端特殊布局，所有屏幕统一使用左右 40% / 60% 布局 */
   .input-area { 
     padding: 14px; 
     background: rgba(255,255,255,0.92); 
@@ -3611,187 +3587,438 @@ onBeforeUnmount(() => {
   }
   
   .animate-fade { animation: fadeIn 0.5s ease; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-/* ==========================================
-   移动端自适应样式（vw/vh + flex 布局）
-   ========================================== */
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }</style>
+  /* --- 岗位投递卡片样式 --- */
+.job-card-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.job-card-item {
+  background: #f0f9eb; /* 浅绿色背景 */
+  border: 1px solid #e1f3d8;
+  padding: 12px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between; /* 左右对齐 */
+  align-items: center;
+}
+
+.job-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.job-name {
+  font-weight: bold;
+  color: #333;
+  font-size: 14px;
+}
+
+.job-salary {
+  font-size: 12px;
+  color: #f56c6c; /* 红色高亮薪资 */
+  font-weight: bold;
+}
+/* --- 新增：投递成功提示字样式 --- */
+.apply-success-text {
+  font-size: 12px;
+  color: #67C23A; /* Element Plus 的成功绿色 */
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  animation: fadeIn 0.5s ease;
+}
+
+/* 让图标稍微对齐一下 */
+.apply-success-text .el-icon {
+  font-size: 14px;
+}
+/* --- 生涯规划 Pro 样式 --- */
+.control-area {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+.filter-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.score-panel {
+  border-top: 1px solid #eee;
+  padding-top: 15px;
+  animation: fadeIn 0.6s ease;
+}
+.score-info {
+  margin-bottom: 10px;
+}
+.score-info .label {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+.skill-tags {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.tag-label { font-size: 12px; color: #999; }
+
+.timeline-area {
+  padding: 10px 5px;
+}
+.timeline-card {
+  padding: 16px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e4e7ed;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+  transition: all 0.3s;
+}
+.timeline-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.1);
+}
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.card-header h4 { margin: 0; font-size: 16px; color: #303133; }
+.tags-row { display: flex; gap: 6px; }
+.content-text { color: #606266; line-height: 1.6; font-size: 14px; margin-bottom: 12px; }
+
+.resources-box {
+  background: #fdf6ec; /* 浅橙色背景 */
+  padding: 10px;
+  border-radius: 6px;
+  border-left: 3px solid #e6a23c;
+}
+.res-label {
+  font-size: 12px;
+  color: #d48806;
+  font-weight: bold;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.res-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.res-link {
+  font-size: 12px;
+  color: #606266;
+  background: rgba(255,255,255,0.6);
+  padding: 2px 8px;
+  border-radius: 4px;
+}/* --- 智能版生涯规划 CSS --- */
+.control-bar {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  padding: 20px;
+  margin-bottom: 30px;
+  background: white;
+}
+.control-input { width: 180px; }
+
+.dashboard-card { background: white; padding: 20px; height: 100%; }
+.roadmap-timeline-card { background: white; padding: 20px; min-height: 500px; }
+.card-title { font-size: 18px; font-weight: bold; margin-bottom: 20px; color: #303133; border-left: 4px solid #409EFF; padding-left: 10px; }
+
+.radar-chart-box { width: 100%; height: 300px; margin-bottom: 10px; }
+
+.ai-insight {
+  background: linear-gradient(135deg, #f0f9eb 0%, #e1f3d8 100%);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #c2e7b0;
+}
+.insight-title { color: #67C23A; font-weight: bold; margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
+.ai-insight p { color: #606266; font-size: 13px; line-height: 1.6; margin: 0; }
+
+/* 时间轴样式 */
+.timeline-box {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  transition: all 0.3s;
+}
+.timeline-box:hover { transform: translateX(5px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+.active-node {
+  background: #ecf5ff;
+  border-color: #b3d8ff;
+  box-shadow: 0 4px 12px rgba(64,158,255,0.15);
+}
+
+.node-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.time-tag { font-weight: bold; color: #409EFF; }
+.node-title { font-weight: bold; color: #303133; font-size: 15px; }
+.node-content { color: #606266; font-size: 14px; margin-bottom: 10px; }
+
+.node-resources { 
+  display: flex; 
+  align-items: flex-start; 
+  gap: 10px; 
+  border-top: 1px dashed #e4e7ed; 
+  padding-top: 10px; 
+  margin-top: 10px;
+  flex-direction: column;
+}
+.res-label { font-size: 12px; color: #909399; font-weight: 600; margin-bottom: 6px; }
+.res-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.res-chip {
+  font-size: 12px; color: #606266; background: #f0f9ff; border: 1px solid #b3d8ff;
+  padding: 4px 10px; border-radius: 12px;
+}
+
+/* 证书样式 */
+.node-certificates {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-top: 1px dashed #e4e7ed;
+  padding-top: 10px;
+  margin-top: 10px;
+  flex-direction: column;
+}
+.cert-label { font-size: 12px; color: #909399; font-weight: 600; margin-bottom: 6px; }
+.cert-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.cert-chip {
+  font-size: 12px; color: #e6a23c; background: #fdf6ec; border: 1px solid #f5dab1;
+  padding: 4px 10px; border-radius: 12px;
+}
+
+/* 推荐企业样式 */
+.node-companies {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-top: 1px dashed #e4e7ed;
+  padding-top: 10px;
+  margin-top: 10px;
+  flex-direction: column;
+}
+.company-label { font-size: 12px; color: #909399; font-weight: 600; margin-bottom: 6px; }
+.company-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.company-chip {
+  font-size: 12px; color: #67c23a; background: #f0f9eb; border: 1px solid #c2e7b0;
+  padding: 4px 10px; border-radius: 12px;
+  font-weight: 500;
+}
+
+.empty-state-box { text-align: center; padding: 60px; color: #909399; }
+.empty-emoji { font-size: 60px; margin-bottom: 20px; }
+/* --- 生涯规划控制栏 Pro 样式 --- */
+
+/* 1. 外层容器：左右布局，增加投影和圆角 */
+.control-bar-pro {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 30px;
+  margin-bottom: 30px;
+  background: rgba(255, 255, 255, 0.95); /* 磨砂白 */
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(149, 157, 165, 0.1); /* 柔和投影 */
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+/* 2. 左侧标题区 */
+.control-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.control-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #303133;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.icon-pulse {
+  color: #409EFF;
+  animation: pulse 2s infinite;
+}
+.control-subtitle {
+  font-size: 13px;
+  color: #909399;
+  letter-spacing: 0.5px;
+}
+
+/* 3. 右侧操作区：弹性布局，防止重叠 */
+.control-right {
+  display: flex;
+  align-items: center;
+  gap: 16px; /* 控件之间的间距 */
+}
+
+/* 下拉框样式优化 */
+.select-item {
+  width: 180px; /* 增加宽度，防止文字截断 */
+  transition: all 0.3s;
+}
+.select-item:hover {
+  transform: translateY(-2px); /* 悬浮微动效 */
+}
+
+/* 按钮样式优化 */
+.generate-btn {
+  padding: 0 24px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #409EFF 0%, #3a8ee6 100%);
+  border: none;
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
+  transition: all 0.3s;
+}
+.generate-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 6px 16px rgba(64, 158, 255, 0.4);
+}
+
+/* 定义简单的呼吸动画 */
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* 📱 适配手机端：如果是小屏幕，自动变成竖排 */
 @media (max-width: 768px) {
-  /* 基础布局适配 */
-  .app-shell {
-    width: 100vw;
-    max-width: 100vw;
-    overflow-x: hidden;
-  }
-  
-  .page {
-    padding: 2.67vw;
-    width: 100%;
-    max-width: 100vw;
-    box-sizing: border-box;
-  }
-  
-  /* 模拟面试聊天页面适配 */
-  .chat-shell {
-    height: calc(100vh - 50vw);
-    min-height: 50vh;
-    border-radius: 4.27vw;
-    padding: 2.67vw;
-    box-sizing: border-box;
-  }
-  
-  .chat-window-el {
-    padding: 4.8vw 4.27vw;
-    border-radius: 4.27vw;
-  }
-  
-  .msg-row {
-    gap: 2.67vw;
-    margin: 3.73vw 0;
-  }
-  
-  .bubble {
-    max-width: 85%;
-    padding: 3.2vw 3.73vw;
-    border-radius: 3.73vw;
-    box-shadow: 0 2.67vw 6.4vw rgba(15,23,42,0.08);
-  }
-  
-  .bubble-name {
-    font-size: 3.2vw;
-    margin-bottom: 1.6vw;
-  }
-  
-  .bubble-text {
-    font-size: 3.73vw;
-    line-height: 1.6;
-  }
-  
-  .input-area {
-    padding: 3.73vw;
-    border-radius: 0 0 4.27vw 4.27vw;
-  }
-  
-  .chat-input {
-    font-size: 3.73vw;
-    padding: 2.67vw 3.73vw;
-    border-radius: 2.13vw;
-  }
-  
-  /* 按钮适配 */
-  .end-interview-button,
-  .send-button {
-    padding: 2.67vw 5.33vw;
-    font-size: 3.73vw;
-    border-radius: 2.13vw;
-    min-height: 10.67vw;
-  }
-  
-  /* 控制栏适配 */
   .control-bar-pro {
     flex-direction: column;
-    gap: 5.33vw;
-    padding: 4vw;
+    align-items: flex-start;
+    gap: 20px;
   }
-  
   .control-right {
     width: 100%;
     flex-direction: column;
-    gap: 3.2vw;
+    gap: 12px;
   }
-  
-  /* 性别选择区域适配 */
-  .gender-selection-area {
-    margin-bottom: 5.33vw;
-    padding: 5.33vw;
-    border-radius: 3.2vw;
-  }
-  
-  .gender-selection-title {
-    font-size: 4.27vw;
-    margin-bottom: 4.27vw;
-  }
-  
-  .gender-selection-buttons {
-    gap: 4.27vw;
-    flex-wrap: wrap;
-  }
-  
-  /* 侧边栏适配 */
-  .side-menu {
-    width: 100%;
-    max-width: 100vw;
-  }
-  
-  .brand-title {
-    font-size: 3.73vw;
-  }
-  
-  .brand-subtitle {
-    font-size: 3.2vw;
-  }
-  
-  /* 顶部栏适配 */
-  .topbar {
-    padding: 2.67vw 4.8vw;
-    height: auto;
-    min-height: 12.8vw;
-  }
-  
-  .topbar-title {
-    font-size: 4.27vw;
-  }
-  
-  .topbar-tag {
-    font-size: 3.2vw;
-  }
-  
-  /* 回答技巧提示框适配 */
-  .guide-tip-box {
-    margin-top: 2.67vw;
-    padding: 2.13vw 3.2vw;
-    font-size: 3.2vw;
-    border-radius: 2.13vw;
-  }
-  
-  /* 报告卡片适配 */
-  .report-card {
-    padding: 4vw;
-    border-radius: 4.27vw;
-    margin-top: 4vw;
-  }
-  
-  /* 确保没有横向滚动 */
-  * {
-    max-width: 100%;
-    box-sizing: border-box;
-  }
-  
-  body, html {
-    overflow-x: hidden;
-    width: 100%;
+  .select-item, .generate-btn {
+    width: 100% !important;
   }
 }
-
-/* 超小屏幕适配（375px 以下） */
-@media (max-width: 375px) {
-  .bubble {
-    max-width: 90%;
-    padding: 2.67vw 3.2vw;
-    font-size: 3.47vw;
-  }
-  
-  .bubble-text {
-    font-size: 3.47vw;
-  }
-  
-  .chat-input {
-    font-size: 3.47vw;
-    padding: 2.4vw 3.2vw;
-  }
-  
-  .page {
-    padding: 2.4vw;
-  }
+/* AI 按钮特效 */
+.ai-jump-btn {
+  background: linear-gradient(135deg, #FF4B4B 0%, #FF914D 100%); /* Streamlit 风格渐变红 */
+  color: white;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 20px; /* 圆角 */
+  font-weight: bold;
+  cursor: pointer;
+  margin-left: 15px; /* 和左边的按钮拉开点距离 */
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px rgba(255, 75, 75, 0.2);
 }
 
-  </style>
+.ai-jump-btn:hover {
+  transform: translateY(-2px); /* 鼠标悬停上浮 */
+  box-shadow: 0 6px 12px rgba(255, 75, 75, 0.3);
+}
+/* 录音按钮激活状态：变红 */
+.is-recording-active {
+  color: #F56C6C !important;      /* 红色文字/图标 */
+  background-color: #fef0f0 !important; /* 浅红背景 */
+  border-color: #fab6b6 !important;     /* 红色边框 */
+}
+
+/* 麦克风图标呼吸动画 */
+.mic-pulse {
+  animation: pulse-animation 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse-animation {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.6; }
+  100% { transform: scale(1); opacity: 1; }
+}
+/* --- 修复布局压缩 (必加) --- */
+.input-row {
+  width: 100%;
+  display: flex; /* 让子元素横向排列 */
+}
+
+/* 强制输入框占满剩余空间 */
+.full-width-input {
+  flex: 1; 
+  width: 100%;
+}
+
+/* 录音按钮激活态 */
+.recording-active {
+  color: #F56C6C !important;
+  background-color: #fef0f0 !important;
+  border-color: #fab6b6 !important;
+}
+
+/* 呼吸动画 */
+.mic-pulse {
+  animation: pulse 1.5s infinite ease-in-out;
+}
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.6; }
+  100% { transform: scale(1); opacity: 1; }
+}
+/* --- 修复布局压缩 --- */
+.input-row {
+  width: 100%;
+  display: flex; 
+}
+.full-width-input {
+  flex: 1; 
+  width: 100%;
+}
+
+/* --- 录音按钮特效 --- */
+.recording-active {
+  color: #F56C6C !important;
+  background-color: #fef0f0 !important;
+  border-color: #fab6b6 !important;
+}
+.mic-pulse {
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+/* --- 🚀 火箭按钮丝滑过渡 --- */
+.rocket-btn {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-weight: bold;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.6; }
+  100% { transform: scale(1); opacity: 1; }
+}
+/* 新增按钮的样式适配，保证间距美观 */
+.assessment-btn {
+  margin-right: 12px; /* 和生成按钮保持间距，与现有布局一致 */
+  transition: all 0.2s ease;
+}
+
+.assessment-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.15);
+}
+
+/* 保持原有样式不变 */
+/* ... 你的其他样式 ... */
