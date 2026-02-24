@@ -2635,15 +2635,18 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <!-- 面试官和聊天区域的左右布局容器 -->
-            <div class="interview-layout-container">
-              <!-- 左侧：数字人展示区（40%宽度，放大显示） -->
-              <div class="digital-human-section">
+            <!-- 面试官和聊天区域的左右布局容器（强制左右分栏） -->
+            <div
+              class="interview-layout-container"
+              style="display: flex; flex-direction: row; width: 100%;"
+            >
+              <!-- 左侧：数字人展示区（约 40% 宽度，放大显示） -->
+              <div class="digital-human-section" style="flex: 0 0 40%; max-width: 40%;">
                 <DigitalHuman :isTalking="interviewerState === 'talking'" :gender="interviewerGender" />
               </div>
 
-              <!-- 右侧：聊天区域（60%宽度，可滚动） -->
-              <div class="chat-shell">
+              <!-- 右侧：聊天区域（约 60% 宽度，可滚动） -->
+              <div class="chat-shell" style="flex: 1; max-width: 60%;">
               <div class="chat-window chat-window-el">
                 <div v-for="(msg, i) in chatHistory" :key="i" class="msg-row" :class="msg.role">
                   <div class="avatar" v-if="msg.role === 'ai'">
