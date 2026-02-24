@@ -2036,6 +2036,13 @@ const aiQuantizeSandboxInputs = async () => {
 
 // 点击「生成雷达图」：调用 AI 自动量化 -> 写回 radarValues -> 触发原有 watch/raf 渲染（雷达图视觉不变）
 const generateSandboxRadar = async () => {
+  // 输入校验：如果 6 个输入全部为空，提示用户先填写
+  const hasInput = sandboxForm.gpa || sandboxForm.project || sandboxForm.intern ||
+                   sandboxForm.competition || sandboxForm.english || sandboxForm.leader
+  if (!hasInput) {
+    return ElMessage.warning('请先填写左侧 6 项参数（支持自然语言描述）')
+  }
+
   try {
     const { next } = await aiQuantizeSandboxInputs()
     radarValues.gpa = next.gpa
