@@ -2635,12 +2635,15 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <!-- 数字人展示区 -->
-            <div class="digital-human-section">
-              <DigitalHuman :isTalking="interviewerState === 'talking'" :gender="interviewerGender" />
-            </div>
+            <!-- 面试官和聊天区域的左右布局容器 -->
+            <div class="interview-layout-container">
+              <!-- 左侧：数字人展示区（40%宽度，放大显示） -->
+              <div class="digital-human-section">
+                <DigitalHuman :isTalking="interviewerState === 'talking'" :gender="interviewerGender" />
+              </div>
 
-            <div class="chat-shell">
+              <!-- 右侧：聊天区域（60%宽度，可滚动） -->
+              <div class="chat-shell">
               <div class="chat-window chat-window-el">
                 <div v-for="(msg, i) in chatHistory" :key="i" class="msg-row" :class="msg.role">
                   <div class="avatar" v-if="msg.role === 'ai'">
@@ -2829,6 +2832,7 @@ onBeforeUnmount(() => {
                   </div>
                   <div class="report-content" v-html="md.render(interviewReportMarkdown)"></div>
                 </div>
+              </div>
               </div>
             </div>
           </div>
@@ -3096,26 +3100,72 @@ onBeforeUnmount(() => {
   .chart-title { font-size: 12px; color: rgba(15,23,42,0.55); margin-bottom: 8px; }
   .chart-container { height: 520px; }
   
-  .digital-human-section {
-    height: 200px;
-    border-radius: 16px;
-    background: rgba(0,0,0,0.85);
-    border: 1px solid rgba(15,23,42,0.10);
-    margin-bottom: 12px;
-    box-shadow: 0 18px 50px rgba(15,23,42,0.08);
-    overflow: hidden;
+  /* 面试布局容器：电脑端左右布局，手机端上下布局 */
+  .interview-layout-container {
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+    height: calc(100vh - 420px);
+    min-height: 600px;
+    width: 100%;
+    box-sizing: border-box;
   }
   
+  /* 左侧：数字人展示区（40%宽度，放大显示） */
+  .digital-human-section {
+    flex: 0 0 40%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 20px;
+    background: rgba(0,0,0,0.85);
+    border: 1px solid rgba(15,23,42,0.10);
+    box-shadow: 0 20px 60px rgba(15,23,42,0.12);
+    overflow: hidden;
+    min-height: 0;
+    padding: 24px 16px;
+    box-sizing: border-box;
+  }
+  
+  .digital-human-section :deep(.digital-human-container) {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+  }
+  
+  .digital-human-section :deep(.video-wrapper) {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .digital-human-section :deep(.digital-video) {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+  }
+  
+  /* 右侧：聊天区域（60%宽度，可滚动） */
   .chat-shell {
-    height: calc(100vh - 420px);
+    flex: 0 0 60%;
     display: flex;
     flex-direction: column;
     background: rgba(255,255,255,0.92);
     border: 1px solid rgba(15,23,42,0.06);
-    border-radius: 16px;
-    box-shadow: 0 18px 50px rgba(15,23,42,0.08);
-    overflow-y: auto;   /* 允许整体区域滚动，报告较长时不被裁剪 */
-    overflow-x: hidden;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(15,23,42,0.12);
+    overflow: hidden;
+    min-height: 0;
   }
   .chat-window-el {
     flex: 1;
@@ -3124,6 +3174,33 @@ onBeforeUnmount(() => {
     background:
       radial-gradient(900px 400px at 20% 0%, rgba(64,158,255,0.10), transparent 60%),
       linear-gradient(180deg, #f7faff 0%, #f3f6fc 100%);
+  }
+  
+  /* 手机端：上下布局，数字人 30% 高度，聊天 70% 高度 */
+  @media (max-width: 768px) {
+    .interview-layout-container {
+      flex-direction: column;
+      height: 100vh;
+      min-height: 100vh;
+      gap: 16px;
+    }
+  
+    .digital-human-section {
+      flex: 0 0 30%;
+      width: 100%;
+      height: 30vh;
+      min-height: 30vh;
+      max-height: 30vh;
+      padding: 20px 16px;
+    }
+  
+    .chat-shell {
+      flex: 0 0 70%;
+      width: 100%;
+      height: 70vh;
+      min-height: 70vh;
+      max-height: 70vh;
+    }
   }
   .input-area { 
     padding: 14px; 
