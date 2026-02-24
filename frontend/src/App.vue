@@ -3176,32 +3176,7 @@ onBeforeUnmount(() => {
       linear-gradient(180deg, #f7faff 0%, #f3f6fc 100%);
   }
   
-  /* 手机端：上下布局，数字人 30% 高度，聊天 70% 高度 */
-  @media (max-width: 768px) {
-    .interview-layout-container {
-      flex-direction: column;
-      height: 100vh;
-      min-height: 100vh;
-      gap: 16px;
-    }
-  
-    .digital-human-section {
-      flex: 0 0 30%;
-      width: 100%;
-      height: 30vh;
-      min-height: 30vh;
-      max-height: 30vh;
-      padding: 20px 16px;
-    }
-  
-    .chat-shell {
-      flex: 0 0 70%;
-      width: 100%;
-      height: 70vh;
-      min-height: 70vh;
-      max-height: 70vh;
-    }
-  }
+  /* （按你最新要求）暂时取消移动端特殊布局，所有屏幕统一使用左右 40% / 60% 布局 */
   .input-area { 
     padding: 14px; 
     background: rgba(255,255,255,0.92); 
