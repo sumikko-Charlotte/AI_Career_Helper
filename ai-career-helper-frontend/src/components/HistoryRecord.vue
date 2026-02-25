@@ -1,8 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
-import { Clock, Document, View, Download, Refresh } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { Clock, Document, View, Download, Refresh, Delete } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import MarkdownIt from 'markdown-it'
 
 // Markdown 渲染器
@@ -219,6 +219,56 @@ const formatAnalysis = (analysis) => {
   }
 }
 
+// 删除记录
+const deleteRecord = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+      '确定删除这条记录？操作不可恢复',
+      '确认删除',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger'
+      }
+    )
+    
+    const username = getCurrentUsername()
+    if (!username) {
+      ElMessage.warning('请先登录')
+      return
+    }
+    
+    try {
+      const res = await axios.delete(`${API_BASE}/api/resume/history/${row.id}`, {
+        params: { username }
+      })
+      
+      if (res.data.code === 200) {
+        ElMessage.success('删除成功')
+        // 刷新列表
+        loadHistoryRecords()
+      } else {
+        ElMessage.error(res.data.msg || '删除失败，请重试')
+      }
+    } catch (err) {
+      console.error('[HistoryRecord] 删除失败:', err)
+      if (err.response?.status === 404) {
+        ElMessage.error('记录不存在或无权删除')
+      } else if (err.response?.status === 500) {
+        ElMessage.error('服务器错误，请稍后重试')
+      } else {
+        ElMessage.error('删除失败，请重试')
+      }
+    }
+  } catch (err) {
+    // 用户取消删除
+    if (err !== 'cancel') {
+      console.error('[HistoryRecord] 删除确认失败:', err)
+    }
+  }
+}
+
 // 刷新列表
 const refreshList = () => {
   loadHistoryRecords()
@@ -274,7 +324,7 @@ onMounted(() => {
             <el-tag v-else type="info" size="small">文本输入</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" align="center" fixed="right">
+        <el-table-column label="操作" width="250" align="center" fixed="right">
           <template #default="scope">
             <el-button 
               type="primary" 
@@ -290,8 +340,18 @@ onMounted(() => {
               size="small" 
               @click="downloadResume(scope.row.resume_file_url)"
               :icon="Download"
+              style="margin-left: 10px;"
             >
               下载
+            </el-button>
+            <el-button 
+              type="danger" 
+              size="small" 
+              @click="deleteRecord(scope.row)"
+              :icon="Delete"
+              style="margin-left: 10px;"
+            >
+              删除
             </el-button>
           </template>
         </el-table-column>
@@ -486,6 +546,18 @@ onMounted(() => {
   padding: 15px;
   background: #f9fafb;
   border-radius: 4px;
+}
+
+/* 删除按钮样式 */
+.el-button--danger {
+  background-color: #f56c6c;
+  border-color: #f56c6c;
+  color: #fff;
+}
+
+.el-button--danger:hover {
+  background-color: #e64949;
+  border-color: #e64949;
 }
 
 /* 响应式适配 */
