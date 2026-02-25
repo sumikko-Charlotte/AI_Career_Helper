@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue' // Removed computed as we will bind directl
 import request, { API_BASE } from '@/utils/request.js'
 import axios from 'axios' // 保留用于 SERVER_API 请求
 import { useRouter, useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const route = useRoute()
@@ -29,14 +30,87 @@ const registerForm = ref({
   target_role: ''
 })
 
-// 页面加载时检查是否有“记住我”的历史
+// 一键登录测试账号
+const testUsername = 'alice'
+const testPassword = 'alice456'
+
+// 页面加载时检查是否有"记住我"的历史，以及 URL 参数自动登录
 onMounted(() => {
   const savedUser = localStorage.getItem('remembered_username')
   if (savedUser) {
     loginForm.value.username = savedUser
     rememberMe.value = true
   }
+  
+  // 检查 URL 参数 auto_login，如果存在则自动登录（全自动，无需手动操作）
+  const autoLoginUser = route.query.auto_login
+  if (autoLoginUser === 'alice') {
+    // 延迟一下确保路由参数完全解析，然后直接调用登录接口
+    setTimeout(() => {
+      handleAutoLogin()
+    }, 300)
+  }
 })
+
+// 自动登录函数（用于 alice 账号演示）
+const handleAutoLogin = async () => {
+  console.log('🚀 [handleAutoLogin] 开始自动登录...')
+  
+  loading.value = true
+  try {
+    // 直接使用测试账号登录
+    const response = await request.post('/api/login', {
+      username: testUsername,
+      password: testPassword
+    })
+    
+    console.log('✅ [handleAutoLogin] 登录响应:', response.data)
+    
+    if (response.data.success) {
+      const user = response.data.user
+      console.log('👤 [handleAutoLogin] 用户信息:', user)
+      
+      // 保存登录状态
+      localStorage.setItem('remembered_username', testUsername)
+      rememberMe.value = true
+      
+      // 同步到真实用户服务（用于持久化 CSV）
+      try {
+        const syncResp = await axios.post(`${SERVER_API}/api/login`, {
+          username: testUsername,
+          password: testPassword
+        })
+        if (!(syncResp.data && syncResp.data.code === 200)) {
+          await axios.post(`${SERVER_API}/api/register`, {
+            username: testUsername,
+            password: testPassword
+          })
+        }
+      } catch (e) {
+        console.warn('[handleAutoLogin] 同步登录到用户服务失败', e)
+      }
+      
+      // 关键修复点：自动登录后也跳转到过渡导航页（/explore），而不是直接到 /app
+      if (user.grade === '管理员' || user.username === 'admin') {
+        console.log('👑 [handleAutoLogin] 检测到管理员身份，跳转后台功能引导页')
+        await router.push('/admin/guide')
+      } else {
+        // 普通用户：自动登录成功后跳转到过渡导航页（第3页）
+        emit('login-success', user)
+        await router.push('/explore')
+      }
+    } else {
+      console.error('❌ [handleAutoLogin] 自动登录失败:', response.data.message)
+      ElMessage.error('自动登录失败：' + response.data.message)
+    }
+  } catch (error) {
+    console.error('❌ [handleAutoLogin] 自动登录错误:', error)
+    ElMessage.error('自动登录请求失败，请检查控制台报错')
+  } finally {
+    loading.value = false
+    console.log('🔚 [handleAutoLogin] 自动登录流程结束')
+  }
+}
 
 const gradeOptions = [
   '大一', '大二', '大三', '大四', 
