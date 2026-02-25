@@ -3,7 +3,6 @@ import { ref, onMounted, computed } from 'vue' // Removed computed as we will bi
 import request, { API_BASE } from '@/utils/request.js'
 import axios from 'axios' // 保留用于 SERVER_API 请求
 import { useRouter, useRoute } from 'vue-router'
-import { QrcodeVue } from 'qrcode.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -33,17 +32,15 @@ const registerForm = ref({
 // 一键登录链接和二维码相关
 const testUsername = 'alice'
 const testPassword = 'alice456'
+// 一键登录链接（本地和线上）
 const loginLink = computed(() => {
   const baseUrl = window.location.origin
   // 使用 auto_login 参数，而不是直接传密码
   return `${baseUrl}/login?auto_login=${testUsername}`
 })
-const qrcodeValue = computed(() => {
-  // 二维码内容：线上使用 https://www.aicareerhelper.xyz，本地使用当前 origin
-  const isProduction = window.location.hostname.includes('aicareerhelper.xyz')
-  const baseUrl = isProduction ? 'https://www.aicareerhelper.xyz' : window.location.origin
-  return `${baseUrl}/login?auto_login=${testUsername}`
-})
+
+// 线上生产环境登录链接（用于生成二维码）
+const productionLoginLink = 'https://www.aicareerhelper.xyz/login?auto_login=alice'
 
 // 页面加载时检查是否有"记住我"的历史，以及 URL 参数自动登录
 onMounted(() => {
@@ -443,7 +440,7 @@ const handleSubmit = () => {
         </span>
       </div>
 
-      <!-- 一键登录链接和二维码区域（仅登录模式显示） -->
+      <!-- 一键登录链接区域（仅登录模式显示） -->
       <div v-if="isLogin" class="quick-login-section">
         <div class="quick-login-divider">
           <span>或</span>
@@ -452,17 +449,12 @@ const handleSubmit = () => {
         <!-- 一键登录链接 -->
         <div class="quick-login-link-container">
           <a :href="loginLink" class="quick-login-link" @click.prevent="handleLoginAndRedirect">
-            🔗 一键登录（测试账号）
+            🔗 一键登录（测试账号 alice）
           </a>
           <p class="quick-login-hint">点击链接自动登录（无需输入账号密码）</p>
-        </div>
-
-        <!-- 二维码登录 -->
-        <div class="qrcode-container">
-          <div class="qrcode-wrapper">
-            <QrcodeVue :value="qrcodeValue" :size="200" level="M" />
-          </div>
-          <p class="qrcode-hint">扫码自动登录（测试账号 alice）</p>
+          <p class="quick-login-link-text" style="margin-top: 12px; font-size: 12px; color: rgba(255,255,255,0.5); word-break: break-all;">
+            {{ loginLink }}
+          </p>
         </div>
       </div>
     </div>
@@ -799,31 +791,6 @@ const handleSubmit = () => {
   text-align: center;
 }
 
-.qrcode-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-}
-
-.qrcode-wrapper {
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.qrcode-hint {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
-  font-weight: 500;
-  margin: 0;
-  text-align: center;
-}
 
 /* ==========================================
    响应式适配：电脑、平板、手机端都能正常显示
