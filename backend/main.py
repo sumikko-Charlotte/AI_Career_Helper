@@ -1439,6 +1439,150 @@ def delete_upload(username: str, task_id: str):
     return {'success': False, 'message': '未找到对应上传记录'}
 
 
+# ===================== 新增：简历历史记录相关接口 =====================
+@app.get('/api/resume/history')
+def get_resume_history(username: str):
+    """
+    获取用户的简历历史记录列表
+    返回格式：{code: 200, msg: "success", data: [{id, created_at, resume_type, resume_file_url, ai_analysis}]}
+    """
+    os.makedirs('data', exist_ok=True)
+    history_file = 'data/resume_history.csv'
+    
+    # 如果文件不存在，返回空列表
+    if not os.path.exists(history_file):
+        return {"code": 200, "msg": "success", "data": []}
+    
+    records = []
+    try:
+        with open(history_file, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row.get('username') == username:
+                    # 确保所有必需字段存在
+                    record = {
+                        'id': row.get('id', ''),
+                        'created_at': row.get('created_at', row.get('date', '')),
+                        'resume_type': row.get('resume_type', 'normal'),
+                        'resume_file_url': row.get('resume_file_url', ''),
+                        'ai_analysis': row.get('ai_analysis', '')
+                    }
+                    records.append(record)
+        
+        # 按时间倒序排列（最新的在前）
+        records.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        return {"code": 200, "msg": "success", "data": records}
+    except Exception as e:
+        print(f"❌ [get_resume_history] 读取历史记录失败: {e}")
+        return {"code": 500, "msg": f"获取历史记录失败: {str(e)}", "data": []}
+
+
+@app.get('/api/resume/history/{record_id}')
+def get_resume_history_detail(record_id: str, username: str):
+    """
+    获取单条简历历史记录详情
+    返回格式：{code: 200, msg: "success", data: {id, created_at, resume_type, resume_file_url, ai_analysis}}
+    """
+    os.makedirs('data', exist_ok=True)
+    history_file = 'data/resume_history.csv'
+    
+    if not os.path.exists(history_file):
+        return {"code": 404, "msg": "记录不存在", "data": {}}
+    
+    try:
+        with open(history_file, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row.get('id') == record_id and row.get('username') == username:
+                    record = {
+                        'id': row.get('id', ''),
+                        'created_at': row.get('created_at', row.get('date', '')),
+                        'resume_type': row.get('resume_type', 'normal'),
+                        'resume_file_url': row.get('resume_file_url', ''),
+                        'ai_analysis': row.get('ai_analysis', '')
+                    }
+                    return {"code": 200, "msg": "success", "data": record}
+        
+        return {"code": 404, "msg": "记录不存在或无权访问", "data": {}}
+    except Exception as e:
+        print(f"❌ [get_resume_history_detail] 读取详情失败: {e}")
+        return {"code": 500, "msg": f"获取详情失败: {str(e)}", "data": {}}
+
+
+@app.delete('/api/resume/history/{record_id}')
+def delete_resume_history(record_id: str, username: str):
+    """
+    删除简历历史记录
+    校验用户权限，删除记录、AI分析结果和PDF文件
+    返回格式：{code: 200, msg: "删除成功"} 或 {code: 400, msg: "删除失败"}
+    """
+    os.makedirs('data', exist_ok=True)
+    history_file = 'data/resume_history.csv'
+    
+    if not os.path.exists(history_file):
+        return {"code": 400, "msg": "历史记录文件不存在"}
+    
+    rows = []
+    removed_record = None
+    removed = False
+    
+    try:
+        # 1. 读取所有记录，找到要删除的记录
+        with open(history_file, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames or []
+            for row in reader:
+                if row.get('id') == record_id and row.get('username') == username:
+                    removed_record = row
+                    removed = True
+                    continue
+                rows.append(row)
+        
+        if not removed:
+            return {"code": 400, "msg": "记录不存在或无权删除"}
+        
+        # 2. 删除服务器上的PDF文件（如果存在）
+        resume_file_url = removed_record.get('resume_file_url', '')
+        if resume_file_url and not resume_file_url.startswith('text_input_'):
+            try:
+                # 如果是相对路径，尝试删除本地文件
+                if resume_file_url.startswith('/static/') or resume_file_url.startswith('static/'):
+                    file_path = resume_file_url.replace('/static/', 'static/')
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        print(f"✅ [delete_resume_history] 已删除文件: {file_path}")
+                # 如果是完整URL，提取文件名并尝试删除
+                elif 'static/' in resume_file_url:
+                    file_name = resume_file_url.split('static/')[-1]
+                    file_path = f"static/{file_name}"
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        print(f"✅ [delete_resume_history] 已删除文件: {file_path}")
+            except Exception as e:
+                print(f"⚠️ [delete_resume_history] 删除文件失败（可能文件不存在）: {e}")
+                # 文件删除失败不影响记录删除
+        
+        # 3. 更新CSV文件（删除记录）
+        with open(history_file, 'w', encoding='utf-8-sig', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        
+        # 4. 同步数据库统计字段（如果有）
+        try:
+            decrement_user_field(username, "uploadedResumeNum", 1)
+        except Exception as e:
+            print(f"⚠️ [delete_resume_history] 更新数据库统计失败: {e}")
+            # 数据库更新失败不影响删除操作
+        
+        return {"code": 200, "msg": "删除成功"}
+        
+    except Exception as e:
+        print(f"❌ [delete_resume_history] 删除失败: {e}")
+        traceback.print_exc()
+        return {"code": 400, "msg": f"删除失败: {str(e)}"}
+
+
 @app.post('/api/user/addTask')
 def add_user_task(username: str):
     """为用户的 createTaskNum +1（用于统计用户提交到 Admin 的次数）"""
