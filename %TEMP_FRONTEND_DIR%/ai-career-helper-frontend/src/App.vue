@@ -2139,6 +2139,19 @@ onMounted(() => {
   window.addEventListener('resize', onResize)
   if (activeMenu.value === '3') nextTick(() => initSandboxChart())
   fetchJobsData()
+  
+  // 检查是否有自动导航标记（从一键登录链接或二维码进入）
+  const autoNavigate = localStorage.getItem('activeMenu')
+  if (autoNavigate) {
+    activeMenu.value = autoNavigate
+    localStorage.removeItem('activeMenu')
+    // 如果是模拟面试，确保初始化
+    if (autoNavigate === '2') {
+      nextTick(() => {
+        // 模拟面试相关初始化已在 handleSelect 中处理
+      })
+    }
+  }
 })
 
 // ==========================================
