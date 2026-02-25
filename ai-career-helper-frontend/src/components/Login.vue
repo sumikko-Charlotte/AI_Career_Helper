@@ -114,14 +114,15 @@ const handleAutoLogin = async () => {
         }
       } catch (e) { console.warn('同步登录到用户服务失败', e) }
 
-      // 登录成功后，跳转到首页（/app），可以访问所有功能
+      // 登录成功后，跳转到过渡导航页（/explore），保留路由等功能
       if (user.grade === '管理员' || user.username === 'admin') {
         console.log('👑 [Auto Login] 检测到管理员身份，跳转后台')
         await router.push('/admin/guide')
       } else {
-        console.log('✅ [Auto Login] 登录成功，跳转到首页')
+        // 普通用户：自动登录成功后跳转到过渡导航页（第3页）
+        console.log('✅ [Auto Login] 登录成功，跳转到过渡导航页')
         emit('login-success', user)
-        await router.push('/app')
+        await router.push('/explore')
       }
     } else {
       console.error('❌ [Auto Login] 登录失败:', response.data.message)
