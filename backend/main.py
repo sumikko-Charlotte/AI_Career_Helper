@@ -591,6 +591,90 @@ def get_resume_history_detail(history_id: int, username: str):
         print(f"❌ [get_resume_history_detail] 错误堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
 
+
+@app.delete("/api/resume/history/{history_id}")
+def delete_resume_history(history_id: int, username: str):
+    """
+    删除简历历史记录
+    
+    关键修复点：
+    1. 校验用户权限，确保只能删除自己的记录
+    2. 删除数据库中的记录
+    3. 删除服务器上的PDF文件（如果存在）
+    4. 返回统一格式：{code: 200, msg: "删除成功"} 或 {code: 400, msg: "删除失败"}
+    """
+    try:
+        # 1. 验证用户是否存在
+        user = get_user_by_username(username)
+        if not user:
+            return {"code": 400, "msg": "用户不存在"}
+        
+        # 2. 获取用户ID
+        user_id = user.get('id') if isinstance(user, dict) else getattr(user, 'id', None)
+        if not user_id:
+            return {"code": 400, "msg": "用户ID不存在"}
+        
+        # 3. 先查询记录是否存在且属于该用户
+        history = get_resume_history_by_id(history_id, user_id)
+        if not history:
+            return {"code": 400, "msg": "记录不存在或无权删除"}
+        
+        # 4. 删除服务器上的PDF文件（如果存在）
+        resume_file_url = history.get("resume_file_url", "")
+        if resume_file_url and not resume_file_url.startswith('text_input_'):
+            try:
+                # 如果是相对路径，尝试删除本地文件
+                if resume_file_url.startswith('/static/') or resume_file_url.startswith('static/'):
+                    file_path = resume_file_url.replace('/static/', 'static/')
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        print(f"✅ [delete_resume_history] 已删除文件: {file_path}")
+                # 如果是完整URL，提取文件名并尝试删除
+                elif 'static/' in resume_file_url:
+                    file_name = resume_file_url.split('static/')[-1]
+                    file_path = f"static/{file_name}"
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        print(f"✅ [delete_resume_history] 已删除文件: {file_path}")
+            except Exception as e:
+                print(f"⚠️ [delete_resume_history] 删除文件失败（可能文件不存在）: {e}")
+                # 文件删除失败不影响记录删除
+        
+        # 5. 从数据库删除记录
+        try:
+            conn = get_db_connection()
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "DELETE FROM resume_history WHERE id = %s AND user_id = %s",
+                    (history_id, user_id)
+                )
+                conn.commit()
+                cursor.close()
+                conn.close()
+                print(f"✅ [delete_resume_history] 数据库记录删除成功，ID: {history_id}, 用户: {username}")
+            else:
+                print(f"⚠️ [delete_resume_history] 数据库连接失败，但继续执行")
+        except Exception as e:
+            print(f"⚠️ [delete_resume_history] 数据库删除失败: {e}")
+            print(f"⚠️ [delete_resume_history] 错误堆栈: {traceback.format_exc()}")
+            # 数据库删除失败时返回错误
+            return {"code": 400, "msg": f"删除失败: {str(e)}"}
+        
+        # 6. 同步数据库统计字段（如果有）
+        try:
+            decrement_user_field(username, "uploadedResumeNum", 1)
+        except Exception as e:
+            print(f"⚠️ [delete_resume_history] 更新数据库统计失败: {e}")
+            # 统计更新失败不影响删除操作
+        
+        return {"code": 200, "msg": "删除成功"}
+        
+    except Exception as e:
+        print(f"❌ [delete_resume_history] 删除失败: {e}")
+        print(f"❌ [delete_resume_history] 错误堆栈: {traceback.format_exc()}")
+        return {"code": 400, "msg": f"删除失败: {str(e)}"}
+
 # 根路径处理（避免重复声明 / 路由）
 @app.get("/")
 def root():
