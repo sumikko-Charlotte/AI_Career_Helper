@@ -117,6 +117,13 @@ const markdownRaw = ref('')
 // markdownProcessed: markdown with injected icons and small transforms for rendering
 const markdownProcessed = ref('')
 
+// 新增：前端 HTML 标签净化函数，防止职业匹配分析报告中混入 HTML / SVG / <span> 片段
+// 只对 HTML 标签做删除，不会修改 Markdown 语法字符（#、*、- 等）
+const cleanHtmlTags = (text) => {
+  if (!text) return ''
+  return text.replace(/<[^>]+>/g, '')
+}
+
 // Inject colored icons for specific section headings to enhance readability
 const ICONS_HTML = {
   overall: `<span class="md-icon overall" aria-hidden="true">\
@@ -161,7 +168,9 @@ function transformMarkdown(mdText) {
 // Render processed markdown (with icons) to HTML
 const markdownHtml = computed(() => {
   if (!markdownProcessed.value) return ''
-  return md.render(markdownProcessed.value)
+  // 在渲染前做一次前端净化，双保险去除 HTML / SVG / <span> 等标签，但保留 Markdown 语法
+  const cleaned = cleanHtmlTags(markdownProcessed.value)
+  return md.render(cleaned)
 })
 
 const filteredCareers = computed(() => {
