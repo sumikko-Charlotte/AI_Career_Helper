@@ -3,6 +3,7 @@ import random
 import csv
 import os
 import datetime
+import re  # 新增：用于清洗 HTML 标签，保证返回纯文本 / Markdown
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -68,6 +69,20 @@ def _deepseek_markdown(system_prompt: str, user_prompt: str) -> str:
         return (resp.choices[0].message.content or "").strip()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DeepSeek 调用失败: {e}")
+
+
+def clean_html_tags(text: str) -> str:
+    """
+    移除所有 HTML 标签，返回纯文本 / Markdown。
+
+    说明：
+    - 后端统一在生成职业匹配 / 生涯规划类 Markdown 报告后调用该函数，
+      以防止大模型或上游逻辑混入 <span> / <svg> / 其他 HTML 片段。
+    """
+    if not text:
+        return ""
+    # 使用正则删除所有形如 <tag ...> 或 </tag> 的片段
+    return re.sub(r"<[^>]+>", "", text)
 
 def _deepseek_json(system_prompt: str, user_prompt: str) -> dict:
     """调用 DeepSeek，要求其返回严格 JSON 对象"""
@@ -1316,7 +1331,11 @@ def analyze_experiment(req: AnalyzeExperimentRequest):
         "3) 关键优势/潜在风险点（各 3-5 条，结合答题内容给证据）\n"
         "4) 若坚持该职业的 4 周行动建议（按周分解）\n"
         "5) 若不适合该职业，建议的备选职业方向（至少 3 个，并解释理由）\n"
-        "要求：只输出 Markdown，不要输出 JSON。"
+        "格式要求：\n"
+        "- 只输出 Markdown 文本（标题、列表、粗体等基础语法可以使用），不要输出 JSON、HTML 或任何代码块；\n"
+        "- 不要使用 ``` 包裹的代码块，也不要输出示例代码或伪代码；\n"
+        "- 只返回纯 Markdown 格式的自然语言分析报告，"
+        "不要包含任何 HTML 标签、SVG 图标或 <span> 标签。"
     )
 
     user_prompt = (
@@ -1327,7 +1346,9 @@ def analyze_experiment(req: AnalyzeExperimentRequest):
     )
 
     markdown = _deepseek_markdown(system_prompt, user_prompt)
-    return {"success": True, "markdown": markdown}
+    # 新增：后端统一清洗 HTML / SVG / <span> 等标签，保证返回给前端的是纯 Markdown 文本
+    cleaned_markdown = clean_html_tags(markdown)
+    return {"success": True, "markdown": cleaned_markdown}
 
 
 @app.post("/api/generate-career")
@@ -1348,7 +1369,11 @@ def generate_career(req: GenerateCareerRequest):
         "5) 12 周成长路线图（按周分解，每周 3-6 个任务）\n"
         "6) 作品集/项目建议（至少 3 个可落地项目，写清楚产出物）\n"
         "7) 简历与面试策略（关键词、故事线、STAR/项目讲法）\n"
-        "要求：只输出 Markdown，不要输出 JSON。"
+        "格式要求：\n"
+        "- 只输出 Markdown 文本（标题、列表、粗体等基础语法可以使用），不要输出 JSON、HTML 或任何代码块；\n"
+        "- 不要使用 ``` 包裹的代码块，也不要输出示例代码或伪代码；\n"
+        "- 只返回纯 Markdown 格式的自然语言分析报告，"
+        "不要包含任何 HTML 标签、SVG 图标或 <span> 标签。"
     )
 
     user_prompt = (
@@ -1362,7 +1387,9 @@ def generate_career(req: GenerateCareerRequest):
     )
 
     markdown = _deepseek_markdown(system_prompt, user_prompt)
-    return {"success": True, "markdown": markdown}
+    # 新增：对整合后的生涯规划报告做 HTML 标签清洗，保证前端收到的是纯 Markdown 文本
+    cleaned_markdown = clean_html_tags(markdown)
+    return {"success": True, "markdown": cleaned_markdown}
 
 
 @app.post("/api/generate-interview-report")
