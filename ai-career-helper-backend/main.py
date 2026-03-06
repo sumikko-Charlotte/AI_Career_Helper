@@ -4,9 +4,7 @@ import csv
 import os
 import datetime
 import re  # 新增：用于清洗 HTML 标签，保证返回纯文本 / Markdown
-import threading  # 👈 新增：保活线程
 
-import requests  # 👈 新增：用于保活 HTTP 请求
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -17,6 +15,8 @@ import shutil  # 👈 新增
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from openai import OpenAI
+
+from keep_alive import start_keep_alive
 
 # ==========================================
 # 导入数据库配置和操作函数
@@ -54,56 +54,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ==============================
-# 保活配置（Render + Streamlit）
-# ==============================
-BACKEND_KEEPALIVE_URL = os.getenv(
-    "KEEPALIVE_BACKEND_URL",
-    "https://ai-career-helper-backend-u1s0.onrender.com/health",
-)
-
-STREAMLIT_KEEPALIVE_URL = os.getenv(
-    "KEEPALIVE_STREAMLIT_URL",
-    "https://ai-career-apper-resume-doctor-69etycfa4ohbkxdweoawk.streamlit.app",
-)
-
-KEEPALIVE_INTERVAL_SECONDS = int(
-    os.getenv("KEEPALIVE_INTERVAL_SECONDS", "600")
-)  # 默认 10 分钟
-
 
 @app.get("/health")
 async def health_check():
     """基础健康检查接口，供 Render / 外部监控使用"""
     return {
-        "status": "ok",
+        "ok": True,
+        "db_ok": True,
         "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
     }
 
 
-def _keepalive_worker():
-    """后台线程：定期请求后端和 Streamlit，降低休眠概率"""
-    urls = [BACKEND_KEEPALIVE_URL, STREAMLIT_KEEPALIVE_URL]
-    print(f"[keepalive] 后端保活线程启动，间隔 {KEEPALIVE_INTERVAL_SECONDS} 秒")
-    print(f"[keepalive] 目标地址: {urls}")
-
-    while True:
-        for url in urls:
-            if not url:
-                continue
-            try:
-                resp = requests.get(url, timeout=10)
-                print(f"[keepalive] ping {url} -> {resp.status_code}")
-            except Exception as e:
-                print(f"[keepalive] ping {url} 失败: {e}")
-        time.sleep(KEEPALIVE_INTERVAL_SECONDS)
-
-
 @app.on_event("startup")
-async def start_keepalive():
-    """FastAPI 启动时，拉起一个后台保活线程"""
-    t = threading.Thread(target=_keepalive_worker, daemon=True)
-    t.start()
+async def start_keepalive_event():
+    """
+    FastAPI 启动时，启动全局保活线程：
+    - 后端自身
+    - Streamlit 应用
+    """
+    start_keep_alive()
 
 # ==========================================
 #  DeepSeek 客户端 (新增：虚拟实验 & 生涯规划整合)
