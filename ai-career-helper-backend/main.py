@@ -4,6 +4,9 @@ import csv
 import os
 import datetime
 import re  # 新增：用于清洗 HTML 标签，保证返回纯文本 / Markdown
+import threading  # 👈 新增：保活线程
+
+import requests  # 👈 新增：用于保活 HTTP 请求
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -12,22 +15,22 @@ import json
 from typing import List
 import shutil  # 👈 新增
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from openai import OpenAI
 
 # ==========================================
 # 导入数据库配置和操作函数
 # ==========================================
 from db_config import (
-    get_db_connection, 
-    get_all_users, 
-    get_user_by_username, 
+    get_db_connection,
+    get_all_users,
+    get_user_by_username,
     user_login,
     update_user_field,
     update_user_multiple_fields,
     create_user,
     increment_user_field,
-    decrement_user_field
+    decrement_user_field,
 )
 app = FastAPI()
 
@@ -36,7 +39,12 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
 if os.path.exists(frontend_dist):
-    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="frontend_assets")
+    app.mount(
+        "/assets",
+        StaticFiles(directory=os.path.join(frontend_dist, "assets")),
+        name="frontend_assets",
+    )
+
 # --- 1. 跨域配置 (必不可少) ---
 app.add_middleware(
     CORSMiddleware,
@@ -45,6 +53,57 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ==============================
+# 保活配置（Render + Streamlit）
+# ==============================
+BACKEND_KEEPALIVE_URL = os.getenv(
+    "KEEPALIVE_BACKEND_URL",
+    "https://ai-career-helper-backend-u1s0.onrender.com/health",
+)
+
+STREAMLIT_KEEPALIVE_URL = os.getenv(
+    "KEEPALIVE_STREAMLIT_URL",
+    "https://ai-career-apper-resume-doctor-69etycfa4ohbkxdweoawk.streamlit.app",
+)
+
+KEEPALIVE_INTERVAL_SECONDS = int(
+    os.getenv("KEEPALIVE_INTERVAL_SECONDS", "600")
+)  # 默认 10 分钟
+
+
+@app.get("/health")
+async def health_check():
+    """基础健康检查接口，供 Render / 外部监控使用"""
+    return {
+        "status": "ok",
+        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+    }
+
+
+def _keepalive_worker():
+    """后台线程：定期请求后端和 Streamlit，降低休眠概率"""
+    urls = [BACKEND_KEEPALIVE_URL, STREAMLIT_KEEPALIVE_URL]
+    print(f"[keepalive] 后端保活线程启动，间隔 {KEEPALIVE_INTERVAL_SECONDS} 秒")
+    print(f"[keepalive] 目标地址: {urls}")
+
+    while True:
+        for url in urls:
+            if not url:
+                continue
+            try:
+                resp = requests.get(url, timeout=10)
+                print(f"[keepalive] ping {url} -> {resp.status_code}")
+            except Exception as e:
+                print(f"[keepalive] ping {url} 失败: {e}")
+        time.sleep(KEEPALIVE_INTERVAL_SECONDS)
+
+
+@app.on_event("startup")
+async def start_keepalive():
+    """FastAPI 启动时，拉起一个后台保活线程"""
+    t = threading.Thread(target=_keepalive_worker, daemon=True)
+    t.start()
 
 # ==========================================
 #  DeepSeek 客户端 (新增：虚拟实验 & 生涯规划整合)
@@ -1487,6 +1546,20 @@ async def serve_frontend(full_path: str):
         return FileResponse(frontend_index)
     return {"message": "Frontend not built. Run 'npm run build' in frontend directory."}
 
+
+# ==========================================
+#  新增简历医生代理接口（转发到本地或外部服务）
+# ==========================================
+@app.get("/resume-doctor")
+async def redirect_resume_doctor():
+    """
+    简历医生代理接口：
+    - 本地开发：可按需改成 http://127.0.0.1:8502
+    - 线上：建议改成你的 Streamlit 云端地址，或直接让前端访问 Streamlit
+    """
+    # 目前保持与历史逻辑一致，仍指向本地 8502
+    return RedirectResponse(url="http://127.0.0.1:8502")
+
 # ==========================================
 #  启动入口
 # ==========================================
@@ -1540,21 +1613,3 @@ if __name__ == "__main__":
     print("   API 文档: http://127.0.0.1:8001/docs\n")
     
     uvicorn.run(app, host="127.0.0.1", port=8001)
-
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
-import uvicorn
-
-app = FastAPI()
-
-# 原有登录等接口保留不变
-# ... 你的原有代码 ...
-
-# 新增简历医生代理接口
-@app.get("/resume-doctor")
-async def redirect_resume_doctor():
-    # 跳转到本地简历医生服务
-    return RedirectResponse(url="http://127.0.0.1:8502")
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)

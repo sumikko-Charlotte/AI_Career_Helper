@@ -17,8 +17,30 @@ import json
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional
+import threading
+import time
 
+import requests
 import streamlit as st
+
+
+BACKEND_KEEPALIVE_URL = "https://ai-career-helper-backend-u1s0.onrender.com/health"
+KEEPALIVE_INTERVAL_SECONDS = 600  # 10 分钟
+
+
+def _backend_keepalive_worker() -> None:
+    """在 Streamlit 运行期间定期请求后端，降低后端休眠概率"""
+    while True:
+        try:
+            resp = requests.get(BACKEND_KEEPALIVE_URL, timeout=10)
+            print(f"[streamlit keepalive] backend -> {resp.status_code}")
+        except Exception as e:  # noqa: BLE001
+            print(f"[streamlit keepalive] error: {e}")
+        time.sleep(KEEPALIVE_INTERVAL_SECONDS)
+
+
+# 在脚本加载时启动后台线程（daemon 不会阻塞应用退出）
+threading.Thread(target=_backend_keepalive_worker, daemon=True).start()
 
 
 def _safe_import_resume_parser():

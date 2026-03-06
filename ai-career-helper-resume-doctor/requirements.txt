@@ -9,7 +9,4 @@ openai>=1.0.0
 
 # 环境变量管理
 python-dotenv>=1.0.0
-streamlit 
-pdfplumber 
-python-dotenv 
-openai 
+requests>=2.31.0
